@@ -232,8 +232,20 @@ the API actually permits:
 | `GET /tracks?ids=…` (batch) | **403** |
 
 So a new app **cannot write a playlist at all** — it cannot even read a
-playlist's tracks. This is Spotify's restriction on recently created apps, not
-a missing scope, and no amount of code fixes it. If you plan an evening around
+playlist's tracks.
+
+Everyone's first assumption is a forgotten OAuth scope, so I recorded what
+Spotify actually granted:
+
+```
+playlist-modify-private
+playlist-modify-public
+playlist-read-private
+```
+
+Both write scopes are present, and the writes still return 403. The
+restriction is at the app level, not the scope level, and no amount of code
+fixes it. If you plan an evening around
 "the API will add the tracks", plan differently.
 
 There is a second, softer wall: search quota. One 429 came back with
