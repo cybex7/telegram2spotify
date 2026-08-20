@@ -110,6 +110,8 @@ class Auth:
         self._tok["expires_at"] = time.time() + int(payload.get("expires_in", 3600))
         if payload.get("refresh_token"):
             self._tok["refresh_token"] = payload["refresh_token"]
+        if payload.get("scope"):
+            self._tok["scope"] = payload["scope"]      # so a 403 can be diagnosed
         self._save()
         return self._tok["access_token"]
 

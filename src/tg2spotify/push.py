@@ -1,12 +1,33 @@
-"""Stage 6 — create the playlist and add matched tracks, 100 per request."""
+"""Stage 6 — fill a playlist with matched tracks, 100 per request.
 
-from typing import Dict, List
+Creating a playlist returns 403 on this app, so an existing playlist can be
+supplied instead: the user makes an empty one in Spotify and passes its link.
+"""
+
+import re
+from typing import Dict, List, Optional
 
 BATCH = 100
 
+_PLAYLIST_REF = re.compile(
+    r"(?:^|playlist[:/])([A-Za-z0-9]{16,})(?:\?|$)")
+
+
+def playlist_id_from(ref: Optional[str]) -> str:
+    """Extract a playlist id from a URL, a spotify: URI, or a bare id."""
+    if not ref or not isinstance(ref, str):
+        raise ValueError("no playlist reference given")
+    if "track" in ref or "album" in ref:
+        raise ValueError(f"not a playlist reference: {ref}")
+    m = _PLAYLIST_REF.search(ref.strip())
+    if not m:
+        raise ValueError(f"could not find a playlist id in {ref!r}")
+    return m.group(1)
+
 
 def run(con, api, playlist_name: str, public: bool = True,
-        include_review: bool = False) -> Dict[str, object]:
+        include_review: bool = False,
+        existing_playlist: Optional[str] = None) -> Dict[str, object]:
     states = ["matched"] + (["review"] if include_review else [])
     rows = con.execute(
         "SELECT msg_id, spotify_uri FROM tracks WHERE status IN (%s) AND spotify_uri IS NOT NULL"
@@ -20,6 +41,11 @@ def run(con, api, playlist_name: str, public: bool = True,
 
     # Reuse the playlist from a previous run: an interrupted push must top the
     # same one up, never leave a half-filled duplicate behind.
+    if existing_playlist:
+        con.execute("INSERT OR REPLACE INTO meta VALUES ('playlist_id', ?)",
+                    (playlist_id_from(existing_playlist),))
+        con.commit()
+
     stored = con.execute("SELECT value FROM meta WHERE key='playlist_id'").fetchone()
     playlist = None
     if stored:

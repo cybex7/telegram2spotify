@@ -77,7 +77,13 @@ class Spotify:
                 if exc.code >= 500:
                     self._sleep(2 ** attempt)
                     continue
-                raise
+                # Spotify explains itself in the body; hiding it wastes a debug cycle.
+                try:
+                    detail = exc.read().decode(errors="replace")[:400]
+                except Exception:
+                    detail = "<no body>"
+                raise RuntimeError(
+                    f"{method} {path} -> HTTP {exc.code}: {detail}") from exc
             except urllib.error.URLError:
                 self._sleep(2 ** attempt)
             except (http.client.IncompleteRead, http.client.RemoteDisconnected,
