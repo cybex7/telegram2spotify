@@ -11,6 +11,7 @@ import os
 import urllib.parse
 from typing import Dict, List, Optional
 
+from .api import RateLimited
 from .score import score
 
 
@@ -61,6 +62,10 @@ def run(con, api, limit: Optional[int] = None, verbose: bool = True) -> Dict[str
             for q in _queries(h["artist"], h["title"]):
                 try:
                     items = api.search_tracks(q, limit=5)
+                except RateLimited:
+                    # Stop immediately: retrying a banned endpoint can extend
+                    # the ban, and everything so far is already committed.
+                    raise
                 except Exception as exc:
                     if verbose:
                         print(f"  #{mid} search failed: {exc}")

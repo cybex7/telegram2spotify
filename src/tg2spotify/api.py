@@ -19,6 +19,11 @@ MAX_RETRY_AFTER_S = 300
 MIN_REQUEST_INTERVAL_S = 0.5
 
 
+class RateLimited(RuntimeError):
+    """Quota exhausted for hours. Callers must stop, not retry: repeat calls
+    against a banned endpoint can extend the ban."""
+
+
 class Spotify:
     def __init__(self, auth, max_retries: int = 5,
                  min_interval: float = MIN_REQUEST_INTERVAL_S):
@@ -62,7 +67,7 @@ class Spotify:
                     wait = int(exc.headers.get("Retry-After", "2")) + 1
                     if wait > MAX_RETRY_AFTER_S:
                         hours = wait / 3600.0
-                        raise RuntimeError(
+                        raise RateLimited(
                             f"Spotify rate limit: it asked us to wait {wait}s "
                             f"({hours:.1f} hours) before the next request. Not "
                             f"sleeping on that. Progress is saved -- re-run once "

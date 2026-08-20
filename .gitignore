@@ -6,3 +6,5 @@ state.sqlite
 review*.csv
 reports/
 .spotify_token.json
+.resume.lock
+.resume.complete

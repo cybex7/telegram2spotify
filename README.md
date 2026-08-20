@@ -26,6 +26,43 @@ python3 run_push.py "Music on 🎧" # stage 6: create the playlist and add match
 The first `run_match.py` opens Spotify once for a single consent click, then
 caches the token in `.spotify_token.json` (gitignored, mode 600).
 
+## Resuming (read this first)
+
+```bash
+python3 status.py
+```
+
+Prints the state and the next command. A skill at
+`.claude/skills/tg2spotify/SKILL.md` carries the same operational knowledge
+for Claude Code sessions.
+
+## Two Spotify limits that are not bugs
+
+**Playlist writing is unavailable to this app.** `/playlists/{id}/tracks` is
+403 for both read and write, while `/me`, `/me/playlists`, `/playlists/{id}`
+and single `/tracks/{id}` return 200; batch `/tracks?ids=` is 403. This is
+Spotify's restriction on newly created Development-mode apps, not a missing
+scope. Delivery therefore goes through `reports/import_list.txt` plus an
+import service such as Soundiiz or TuneMyMusic, which hold their own write
+access. The pipeline still does the hard part: it converts mangled channel
+tags into confirmed Spotify tracks, so the importer receives canonical
+spelling and matches near-perfectly.
+
+**Search quota bans last hours.** One 429 asked for a 54,879 second
+(15.2 hour) wait. `api.RateLimited` aborts the run rather than sleeping, and
+retrying a banned endpoint can extend the ban - wait, then re-run.
+
+## Current state
+
+| | |
+|---|---|
+| matched | 148 |
+| review (published too) | 27 |
+| not found | 25 |
+| still to match | 538 |
+| exported to `import_list.txt` | 173 |
+| target playlist | `0TkJ5AgcefGgvG26eGTRze` ("Music On") |
+
 ## Status
 
 | Stage | State |
