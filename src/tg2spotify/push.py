@@ -18,10 +18,25 @@ def run(con, api, playlist_name: str, public: bool = True,
         if r["spotify_uri"] not in uris:
             uris.append(r["spotify_uri"])
 
-    me = api.me()
-    playlist = api.create_playlist(
-        me["id"], playlist_name, public=public,
-        description="Imported from my Telegram channel archive (2018-2026).")
+    # Reuse the playlist from a previous run: an interrupted push must top the
+    # same one up, never leave a half-filled duplicate behind.
+    stored = con.execute("SELECT value FROM meta WHERE key='playlist_id'").fetchone()
+    playlist = None
+    if stored:
+        try:
+            playlist = api.playlist(stored["value"])
+        except Exception:
+            playlist = None            # deleted upstream: fall through and recreate
+
+    if playlist is None:
+        me = api.me()
+        playlist = api.create_playlist(
+            me["id"], playlist_name, public=public,
+            description="Imported from my Telegram channel archive (2018-2026).")
+        con.execute("INSERT OR REPLACE INTO meta VALUES ('playlist_id', ?)",
+                    (playlist["id"],))
+        con.commit()
+
     existing = set(api.playlist_uris(playlist["id"]))
     fresh = [u for u in uris if u not in existing]
 
@@ -34,4 +49,5 @@ def run(con, api, playlist_name: str, public: bool = True,
 
     return {"playlist_url": playlist["external_urls"]["spotify"],
             "playlist_id": playlist["id"],
-            "candidates": len(rows), "unique": len(uris), "added": added}
+            "candidates": len(rows), "unique": len(uris),
+            "already_present": len(uris) - len(fresh), "added": added}

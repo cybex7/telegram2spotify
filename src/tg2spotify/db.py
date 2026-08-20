@@ -40,6 +40,10 @@ CREATE TABLE IF NOT EXISTS excluded (
   reason  TEXT,
   detail  TEXT
 );
+CREATE TABLE IF NOT EXISTS meta (
+  key    TEXT PRIMARY KEY,
+  value  TEXT
+);
 CREATE INDEX IF NOT EXISTS idx_tracks_status ON tracks(status);
 """
 

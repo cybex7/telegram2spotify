@@ -74,6 +74,10 @@ class Spotify:
                              body={"name": name, "public": public,
                                    "description": description})
 
+    def playlist(self, playlist_id: str) -> dict:
+        return self._request("GET", f"/playlists/{playlist_id}",
+                             params={"fields": "id,name,external_urls"})
+
     def add_items(self, playlist_id: str, uris: List[str]) -> dict:
         return self._request("POST", f"/playlists/{playlist_id}/tracks",
                              body={"uris": uris})
