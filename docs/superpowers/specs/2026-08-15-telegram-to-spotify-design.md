@@ -25,6 +25,8 @@ Telegram Desktop export at
 | Formats | mp3 703, m4a 26, flac 5, ogg 4 |
 | Exact duplicate `performer`+`title` pairs | 12 |
 | Duplicate filenames across audio messages | 4 |
+| Message date coverage | **2018-01-17 → 2026-08-08** |
+| Message id range | 1 → 1028 (904 present; 124 deleted/service gaps) |
 
 The 738 audio messages resolve to 734 distinct filenames (4 collisions), one of
 which is not a file at all but the export-failure placeholder described under
@@ -95,8 +97,8 @@ result.json + files/  →  [1] ingest       → tracks table (5 raw sources each
                          [2] clean        → ranked (artist,title) hypotheses
                          [3] match        → Spotify search + score → auto/review/miss
                          [4] review       → CSV of ambiguous, human decides
-                         [5] fingerprint  → shazamio, misses only
                          [6] push         → batched playlist adds
+                         [5] fingerprint  → DEFERRED: only if misses > 100
 ```
 
 ### Stage 1 — ingest
@@ -181,11 +183,27 @@ Expected review volume at the balanced threshold: roughly 100–200 tracks.
 CSV: original metadata, top 3 candidates with scores and durations, one column
 to fill in. Re-runnable; only ever asks about unresolved tracks.
 
-### Stage 5 — fingerprint
+### Stage 5 — fingerprint (DEFERRED — build only if needed)
 
-`shazamio` over stage-3 misses only (expected 10–20% of the corpus). Identifies
-from the audio itself, bypassing text entirely. Results re-enter stage 3 scoring.
-Survivors land in a final "not on Spotify" report rather than disappearing.
+Not built in the first pass. The user will add unmatched tracks to Spotify by
+hand and considers a manual list of **under 100 tracks acceptable**. That number
+is therefore the trigger condition, not a guess:
+
+- misses < 100 → stage 5 is never written. Hand over `not_found.csv` and stop.
+- misses ≥ 100 → build stage 5 (`shazamio` over the misses only, identifying from
+  the audio itself and bypassing text entirely) purely to push the manual pile
+  back under 100.
+
+Deciding this after measuring rather than before avoids building an unofficial,
+rate-limited dependency that may turn out to be unnecessary.
+
+### Deliverable: `not_found.csv`
+
+The unmatched tracks are a primary output, not an error log, because they are
+handled manually. One row per track: cleaned artist, cleaned title, duration,
+original Telegram `performer`/`title`, source filename, and a ready-made
+`https://open.spotify.com/search/…` URL so each one is a single click to look up
+and add by hand.
 
 ### Stage 6 — push
 
