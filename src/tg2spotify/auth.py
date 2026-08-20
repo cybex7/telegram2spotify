@@ -6,6 +6,7 @@ logged in. Tokens are cached locally (gitignored) and refreshed silently.
 """
 
 import base64
+import errno
 import hashlib
 import http.server
 import json
@@ -21,6 +22,8 @@ from typing import Optional
 AUTH_URL = "https://accounts.spotify.com/authorize"
 TOKEN_URL = "https://accounts.spotify.com/api/token"
 REDIRECT_URI = "http://127.0.0.1:8888/callback"
+CALLBACK_PORT = 8888
+CALLBACK_PATH = "/callback"
 SCOPES = "playlist-modify-public playlist-modify-private playlist-read-private"
 
 
@@ -28,17 +31,32 @@ def _b64url(raw: bytes) -> str:
     return base64.urlsafe_b64encode(raw).decode().rstrip("=")
 
 
+def parse_callback(path: str):
+    """(is_callback, code, error) for one request path.
+
+    Anything that is not the redirect path -- /favicon.ico, a stray probe, a
+    preconnect -- must be ignored rather than ending the wait.
+    """
+    parsed = urllib.parse.urlparse(path)
+    if parsed.path.rstrip("/") != CALLBACK_PATH.rstrip("/"):
+        return False, None, None
+    params = urllib.parse.parse_qs(parsed.query)
+    return True, (params.get("code") or [None])[0], (params.get("error") or [None])[0]
+
+
 class _CallbackHandler(http.server.BaseHTTPRequestHandler):
     code: Optional[str] = None
     error: Optional[str] = None
 
     def do_GET(self):  # noqa: N802
-        params = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-        _CallbackHandler.code = (params.get("code") or [None])[0]
-        _CallbackHandler.error = (params.get("error") or [None])[0]
+        is_callback, code, error = parse_callback(self.path)
+        if not is_callback:
+            self.send_response(204)      # favicon and friends: acknowledge, ignore
+            self.end_headers()
+            return
+        _CallbackHandler.code, _CallbackHandler.error = code, error
         body = ("Authorised. You can close this tab and return to the terminal."
-                if _CallbackHandler.code else
-                f"Authorisation failed: {_CallbackHandler.error}")
+                if code else f"Authorisation failed: {error}")
         self.send_response(200)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.end_headers()
@@ -113,8 +131,21 @@ class Auth:
             "state": state,
         })
 
-        server = http.server.HTTPServer(("127.0.0.1", 8888), _CallbackHandler)
-        threading.Thread(target=server.handle_request, daemon=True).start()
+        _CallbackHandler.code = _CallbackHandler.error = None   # no stale state
+        try:
+            server = http.server.HTTPServer(("127.0.0.1", CALLBACK_PORT), _CallbackHandler)
+        except OSError as exc:
+            if exc.errno == errno.EADDRINUSE:
+                raise RuntimeError(
+                    f"port {CALLBACK_PORT} is already in use. Another run of this "
+                    f"script is probably still waiting for the Spotify callback.\n"
+                    f"  Stop it with:  pkill -f run_match.py\n"
+                    f"then run this again."
+                ) from exc
+            raise
+        # serve_forever, not handle_request: the browser sends extra requests
+        # (favicon, preconnect) and a one-shot server would spend itself on those.
+        threading.Thread(target=server.serve_forever, daemon=True).start()
 
         print("\nOpening Spotify for one consent click:\n  " + url + "\n")
         try:
@@ -127,6 +158,7 @@ class Auth:
             if time.time() > deadline:
                 raise TimeoutError("no callback within 5 minutes")
             time.sleep(0.3)
+        server.shutdown()
         server.server_close()
         if _CallbackHandler.error:
             raise RuntimeError("authorisation denied: " + _CallbackHandler.error)
