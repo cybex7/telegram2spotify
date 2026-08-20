@@ -12,11 +12,11 @@ from tg2spotify import db, match
 from tg2spotify.api import Spotify
 from tg2spotify.auth import Auth
 
-CLIENT_ID = os.environ.get("SPOTIFY_CLIENT_ID", "c5f9bf69f8b346c3a9a0df84392eb807")
+from tg2spotify.config import client_id
 
 limit = int(sys.argv[1]) if len(sys.argv) > 1 else None
 con = db.connect(os.path.join(ROOT, "state.sqlite"))
-api = Spotify(Auth(CLIENT_ID, os.path.join(ROOT, ".spotify_token.json")))
+api = Spotify(Auth(client_id(), os.path.join(ROOT, ".spotify_token.json")))
 print("authorised as:", api.me().get("display_name"), "\n")
 
 stats = match.run(con, api, limit=limit)

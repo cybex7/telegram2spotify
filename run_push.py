@@ -12,7 +12,7 @@ from tg2spotify import db, push
 from tg2spotify.api import Spotify
 from tg2spotify.auth import Auth
 
-CLIENT_ID = os.environ.get("SPOTIFY_CLIENT_ID", "c5f9bf69f8b346c3a9a0df84392eb807")
+from tg2spotify.config import client_id
 args = [a for a in sys.argv[1:] if not a.startswith("--")]
 name = args[0] if args else "Music on 🎧"
 # second argument: link to a playlist you already created (creation is 403 here)
@@ -20,7 +20,7 @@ existing = args[1] if len(args) > 1 else os.environ.get("SPOTIFY_PLAYLIST")
 include_review = "--include-review" in sys.argv
 
 con = db.connect(os.path.join(ROOT, "state.sqlite"))
-api = Spotify(Auth(CLIENT_ID, os.path.join(ROOT, ".spotify_token.json")))
+api = Spotify(Auth(client_id(), os.path.join(ROOT, ".spotify_token.json")))
 result = push.run(con, api, name, public=True, include_review=include_review,
                   existing_playlist=existing)
 for k, v in result.items():

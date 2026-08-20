@@ -50,11 +50,11 @@ and re-run.
 
 ## Facts worth not re-deriving
 
-- Export: `/home/arash/Downloads/Telegram Desktop/ChatExport_2026-08-12/`,
-  904 messages, 738 audio, covering 2018-01-17 → 2026-08-08.
+- Export path comes from `.export_path`; this archive had 904 messages,
+  738 audio, covering 2018-01-17 → 2026-08-08.
 - Excluded: 331 `*_thumb.jpg`, 126 voice messages, 17 videos, 1 oversized track.
-- Target playlist `0TkJ5AgcefGgvG26eGTRze` ("Music On", public, user-created
-  by hand because the API cannot create one). Stored in the `meta` table.
+- Target playlist is stored in the `meta` table, created by hand because the
+  API cannot create one. Client id comes from `.client_id` (never committed).
 - User's decisions: publish `review` matches too; accept a few wrong-version
   tracks; a manual pile under 100 is fine; fingerprinting (stage 5) stays
   unbuilt unless misses exceed 100.

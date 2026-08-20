@@ -26,6 +26,18 @@ python3 run_push.py "Music on 🎧" # stage 6: create the playlist and add match
 The first `run_match.py` opens Spotify once for a single consent click, then
 caches the token in `.spotify_token.json` (gitignored, mode 600).
 
+## Setup
+
+```bash
+echo YOUR_SPOTIFY_CLIENT_ID > .client_id            # from developer.spotify.com/dashboard
+echo '/path/to/ChatExport_YYYY-MM-DD' > .export_path # Telegram Desktop -> export, JSON
+```
+
+Both files are gitignored. The app's Redirect URI must be exactly
+`http://127.0.0.1:8888/callback`, with "Web API" ticked. No client secret is
+needed. Never commit a client id: whoever runs with it spends *your* search
+quota and inherits your rate-limit bans.
+
 ## Resuming (read this first)
 
 ```bash
@@ -61,7 +73,7 @@ retrying a banned endpoint can extend the ban - wait, then re-run.
 | not found | 25 |
 | still to match | 538 |
 | exported to `import_list.txt` | 173 |
-| target playlist | `0TkJ5AgcefGgvG26eGTRze` ("Music On") |
+| target playlist | set locally, see Setup |
 
 ## Status
 
@@ -74,8 +86,8 @@ retrying a banned endpoint can extend the ban - wait, then re-run.
 | 6 push to playlist | done |
 | 5 fingerprint | deferred — only if misses > 100 |
 
-Client id `c5f9bf69f8b346c3a9a0df84392eb807` is baked in as the default (it is a
-public identifier, not a secret). PKCE means no client secret is used at all.
+Configure your own app once (see Setup below). PKCE means no client secret is
+used at all.
 
 ## What stage 1+2 produced
 

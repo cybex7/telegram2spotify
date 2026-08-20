@@ -9,7 +9,7 @@ from tg2spotify.api import Spotify
 from tg2spotify.auth import Auth
 
 con = db.connect(os.path.join(ROOT, "state.sqlite"))
-api = Spotify(Auth(os.environ.get("SPOTIFY_CLIENT_ID", "c5f9bf69f8b346c3a9a0df84392eb807"),
-                   os.path.join(ROOT, ".spotify_token.json")))
+from tg2spotify.config import client_id
+api = Spotify(Auth(client_id(), os.path.join(ROOT, ".spotify_token.json")))
 print(export.fetch_canonical(con, api))
 print(export.write_import_files(con, os.path.join(ROOT, "reports")))

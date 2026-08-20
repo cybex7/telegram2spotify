@@ -8,3 +8,5 @@ reports/
 .spotify_token.json
 .resume.lock
 .resume.complete
+.client_id
+.export_path
