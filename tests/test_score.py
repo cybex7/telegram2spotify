@@ -69,3 +69,44 @@ def test_persian_arabic_spelling_variants_still_match():
 def test_word_order_difference_tolerated():
     s = score("Hafez Nazeri", "Existence Life", "Life Existence", ["Hafez Nazeri"], 400000, 400)
     assert s.verdict == "auto", s
+
+
+# ------------------------- regressions found on the first 20 real matches
+
+def test_spotify_dash_suffix_qualifier_is_stripped():
+    # THE bug: Spotify writes qualifiers after a dash, not only in brackets.
+    # 'Let It Be' vs 'Let It Be - Remastered 2009' scored 0.667 and went to
+    # review despite the durations matching to 0.17s.
+    s = score("The Beatles", "Let It Be", "Let It Be - Remastered 2009",
+              ["The Beatles"], 243000, 243)
+    assert s.title_sim == 1.0, s
+    assert s.verdict == "auto", s
+
+def test_dash_live_and_radio_edit_suffixes():
+    for suffix in ("- Live", "- Radio Edit", "- Single Version",
+                   "- 2011 Remaster", "- Acoustic Version"):
+        s = score("Keane", "Somewhere Only We Know",
+                  f"Somewhere Only We Know {suffix}", ["Keane"], 240000, 240)
+        assert s.title_sim == 1.0, (suffix, s)
+
+def test_genuine_dash_in_title_is_not_stripped():
+    # a dash that is part of the actual title must survive
+    s = score("Artist", "Love - Hate", "Love - Hate", ["Artist"], 200000, 200)
+    assert s.title_sim == 1.0 and s.verdict == "auto"
+
+def test_ampersand_joined_artists_match():
+    # 'Arad Aria&Kaveh Afagh' scored artist=0.125 against separate Spotify artists
+    s = score("Arad Aria&Kaveh Afagh", "While My Guitar Gently Weeps",
+              "While My Guitar Gently Weeps", ["Arad Aria", "Kaveh Afagh"], 277000, 277)
+    assert s.artist_sim > 0.9, s
+
+def test_comma_joined_artists_match():
+    s = score("King Raam, Eendo", "The Last Waltz", "The Last Waltz",
+              ["King Raam"], 240000, 240)
+    assert s.artist_sim > 0.9, s
+
+def test_single_artist_name_containing_and_still_matches_whole():
+    # splitting must not lose a name that legitimately contains 'and'
+    s = score("Simon and Garfunkel", "The Boxer", "The Boxer",
+              ["Simon & Garfunkel"], 200000, 200)
+    assert s.artist_sim > 0.9, s

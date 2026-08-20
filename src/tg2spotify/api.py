@@ -1,6 +1,8 @@
 """Thin Spotify Web API client: urllib, rate-limit aware, resumable."""
 
+import http.client
 import json
+import socket
 import time
 import urllib.error
 import urllib.parse
@@ -45,6 +47,14 @@ class Spotify:
                     continue
                 raise
             except urllib.error.URLError:
+                time.sleep(2 ** attempt)
+            except (http.client.IncompleteRead, http.client.RemoteDisconnected,
+                    ConnectionError, socket.timeout) as exc:
+                # Seen once in 50 searches, so certain to recur over thousands.
+                # Without this the hypothesis was silently skipped, quietly
+                # costing the track its best chance of a match.
+                if attempt == self.max_retries - 1:
+                    raise
                 time.sleep(2 ** attempt)
         raise RuntimeError(f"giving up on {method} {path}")
 

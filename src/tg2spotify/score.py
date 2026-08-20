@@ -21,6 +21,17 @@ _IMPOSTOR = re.compile(
     r"\b(?:karaoke|tribute|made\s+famous\s+by|in\s+the\s+style\s+of|originally"
     r"\s+performed\s+by|cover\s+version|8-?bit|lullaby|workout\s+mix)\b", re.I)
 _FEAT_PART = re.compile(r"\s*[\(\[]?\s*\b(?:feat|ft|featuring|with)\b\.?[^\)\]]*[\)\]]?", re.I)
+# Spotify's dominant convention: the qualifier trails a dash rather than sitting
+# in brackets -- 'Let It Be - Remastered 2009', 'Somewhere Only We Know - Live'.
+# Requiring a known keyword after the dash keeps genuine titles like
+# 'Love - Hate' intact.
+_DASH_QUALIFIER = re.compile(
+    r"\s+-\s+[^-]*?\b(?:remaster(?:ed)?|live|version|edit|mono|stereo|deluxe"
+    r"|bonus|mix|remix|instrumental|acoustic|demo|single|radio|take\s*\d+"
+    r"|\d{4}\s*remaster)\b[^-]*$", re.I)
+# Artists Telegram jams into one field but Spotify lists separately.
+_ARTIST_SPLIT = re.compile(
+    r"\s*(?:&|,|/|\bx\b|\bvs\.?\b|\bfeat\b\.?|\bft\b\.?|\bwith\b|\band\b)\s*", re.I)
 
 AUTO_TOTAL = 0.85          # balanced threshold, per the design decision
 AUTO_TITLE_SIM = 0.80
@@ -34,6 +45,7 @@ def _key(s: str) -> str:
     """Comparison form: normalised, qualifier-stripped, punctuation-free."""
     s = normalize(s or "")
     s = _QUALIFIER.sub("", s)
+    s = _DASH_QUALIFIER.sub("", s)
     s = _FEAT_PART.sub("", s)
     s = re.sub(r"[^\w\s]", " ", s, flags=re.UNICODE)
     return re.sub(r"\s+", " ", s).strip().lower()
@@ -50,6 +62,29 @@ def _sim(a: str, b: str) -> float:
     jaccard = len(ta & tb) / len(ta | tb) if (ta | tb) else 0.0
     ratio = difflib.SequenceMatcher(None, a, b).ratio()
     return max(ratio, jaccard)
+
+
+def _artist_sim(hyp_artist: str, cand_artists: List[str]) -> float:
+    """Best similarity over every (our artist name, their artist name) pair.
+
+    Telegram stores 'Arad Aria&Kaveh Afagh' in one field while Spotify lists two
+    artists, so each side is compared piecewise as well as whole -- comparing the
+    whole string too keeps names that legitimately contain a separator word
+    ('Simon and Garfunkel') from being torn apart.
+    """
+    cands = [c for c in (cand_artists or []) if c]
+    if not hyp_artist or not cands:
+        return 0.0
+    parts = [p for p in _ARTIST_SPLIT.split(hyp_artist) if p.strip()]
+    # also a joiner-insensitive form, so 'Simon and Garfunkel' meets 'Simon & Garfunkel'
+    collapsed = _ARTIST_SPLIT.sub(" ", hyp_artist)
+    ours = [hyp_artist, collapsed] + parts
+    joined = " ".join(c for c in cands)
+    best = 0.0
+    for h in ours:
+        for c in cands + ([joined] if len(cands) > 1 else []):
+            best = max(best, _sim(h, c))
+    return best
 
 
 def _duration_score(delta: Optional[float]) -> float:
@@ -75,7 +110,7 @@ class Scored:
 def score(hyp_artist: str, hyp_title: str, cand_title: str, cand_artists: List[str],
           cand_duration_ms: Optional[int], our_duration_s: Optional[float]) -> Scored:
     title_sim = _sim(hyp_title, cand_title)
-    artist_sim = max((_sim(hyp_artist, a) for a in (cand_artists or [])), default=0.0)
+    artist_sim = _artist_sim(hyp_artist, cand_artists)
 
     delta: Optional[float] = None
     if cand_duration_ms and our_duration_s:

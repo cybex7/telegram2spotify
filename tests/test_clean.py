@@ -201,3 +201,13 @@ def test_filename_underscores_become_spaces():
 def test_filename_download_id_suffix_stripped():
     p = _pairs(performer=None, title=None, filename="King-Raam-The-Last-Waltz_3136300.mp3")
     assert all("3136300" not in t for _, t in p)
+
+
+def test_placeholder_artist_values_are_dropped():
+    # '<unknown>' is an ID3 placeholder, not a musician
+    assert clean_field("<unknown>").text == ""
+    assert clean_field("Unknown Artist").text == ""
+    assert clean_field("Various Artists").text == ""
+
+def test_real_artist_named_unknown_ish_survives():
+    assert clean_field("Unknown Mortal Orchestra").text == "Unknown Mortal Orchestra"

@@ -79,6 +79,15 @@ _EDGE_JUNK = re.compile(r"^[\s\-–—.,|/_:]+|[\s\-–—,|/_:]+$")
 _NOISE_WORDS = re.compile(r"\b(?:telegram|channel|chanel|kanal|group|admin|bot|music)\b", re.I)
 
 
+# Values tag editors write when they have nothing: never a real performer.
+_PLACEHOLDERS = {"unknown", "unknown artist", "various", "various artists", "va",
+                 "n/a", "na", "none", "no artist", "untitled", "track", "audio"}
+
+
+def _is_placeholder(s: str) -> bool:
+    return re.sub(r"[^\w\s]", "", s, flags=re.UNICODE).strip().lower() in _PLACEHOLDERS
+
+
 def _is_only_noise(s: str) -> bool:
     """True when a field holds nothing but channel branding or decoration."""
     core = _NOISE_WORDS.sub(" ", s)
@@ -129,7 +138,10 @@ def clean_field(raw: Optional[str]) -> Cleaned:
     s = _EDGE_JUNK.sub("", s)
     s = re.sub(r"\s+", " ", s).strip()
 
-    if s and _is_only_noise(s):
+    if s and _is_placeholder(s):
+        rules.append("placeholder")
+        s = ""
+    elif s and _is_only_noise(s):
         rules.append("channel_noise")
         s = ""
     return Cleaned(s, rules)
