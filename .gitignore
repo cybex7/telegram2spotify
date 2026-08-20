@@ -5,3 +5,4 @@ state.sqlite
 .env
 review*.csv
 reports/
+.spotify_token.json

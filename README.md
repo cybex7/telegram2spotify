@@ -16,9 +16,15 @@ ID3v2 reader standing in for `mutagen`.
 ## Run
 
 ```bash
-python3 tests/run_tests.py     # 38 golden cases, all from real channel data
-python3 run_ingest.py          # stage 1+2: export -> state.sqlite + reports/cleaned.csv
+python3 tests/run_tests.py       # 52 tests: cleaning + scoring
+python3 run_ingest.py            # stage 1+2: export -> state.sqlite + reports/cleaned.csv
+python3 run_match.py 20          # stage 3 on 20 tracks first, to sanity-check
+python3 run_match.py             # stage 3 on all 738 (resumable)
+python3 run_push.py "Music on 🎧" # stage 6: create the playlist and add matches
 ```
+
+The first `run_match.py` opens Spotify once for a single consent click, then
+caches the token in `.spotify_token.json` (gitignored, mode 600).
 
 ## Status
 
@@ -26,10 +32,13 @@ python3 run_ingest.py          # stage 1+2: export -> state.sqlite + reports/cle
 |---|---|
 | 1 ingest (5 metadata sources) | done |
 | 2 clean + hypotheses | done, 38 tests green |
-| 3 match against Spotify | **needs a Spotify client id** |
-| 4 review CSV | not started |
-| 6 push to playlist | not started |
+| 3 match against Spotify | done, 14 scoring tests green |
+| 4 review CSV | done (`reports/review.csv`) |
+| 6 push to playlist | done |
 | 5 fingerprint | deferred — only if misses > 100 |
+
+Client id `c5f9bf69f8b346c3a9a0df84392eb807` is baked in as the default (it is a
+public identifier, not a secret). PKCE means no client secret is used at all.
 
 ## What stage 1+2 produced
 
@@ -41,12 +50,13 @@ python3 run_ingest.py          # stage 1+2: export -> state.sqlite + reports/cle
 
 Review `reports/cleaned.csv` to audit the cleaning before any Spotify call is made.
 
-## To continue
+## Spotify app
 
-Create a free app at <https://developer.spotify.com/dashboard>, redirect URI
-`http://127.0.0.1:8888/callback`, then export:
+Created at <https://developer.spotify.com/dashboard>, redirect URI
+`http://127.0.0.1:8888/callback`, Web API, Development mode.
+
+Only needed if you replace the app. No client secret is ever used:
 
 ```bash
 export SPOTIFY_CLIENT_ID=...
-export SPOTIFY_CLIENT_SECRET=...
 ```
