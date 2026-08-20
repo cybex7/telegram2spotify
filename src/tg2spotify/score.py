@@ -20,7 +20,12 @@ _QUALIFIER = re.compile(
 _IMPOSTOR = re.compile(
     r"\b(?:karaoke|tribute|made\s+famous\s+by|in\s+the\s+style\s+of|originally"
     r"\s+performed\s+by|cover\s+version|8-?bit|lullaby|workout\s+mix)\b", re.I)
-_FEAT_PART = re.compile(r"\s*[\(\[]?\s*\b(?:feat|ft|featuring|with)\b\.?[^\)\]]*[\)\]]?", re.I)
+# 'with X' marks a collaboration only inside brackets -- Spotify writes
+# '(with Eendo)'. Stripping a bare trailing 'with ...' would make
+# 'Dancing with Myself' identical to 'Dancing'.
+_FEAT_BRACKETED = re.compile(
+    r"\s*[\(\[]\s*\b(?:feat|ft|featuring|with)\b\.?[^\)\]]*[\)\]]", re.I)
+_FEAT_BARE = re.compile(r"\s*\b(?:feat|ft|featuring)\b\.?\s+.*$", re.I)
 # Spotify's dominant convention: the qualifier trails a dash rather than sitting
 # in brackets -- 'Let It Be - Remastered 2009', 'Somewhere Only We Know - Live'.
 # Requiring a known keyword after the dash keeps genuine titles like
@@ -36,7 +41,18 @@ _ARTIST_SPLIT = re.compile(
 AUTO_TOTAL = 0.85          # balanced threshold, per the design decision
 AUTO_TITLE_SIM = 0.80
 AUTO_DURATION_S = 5
-REJECT_TOTAL = 0.45
+# Loosened paths: perfect text on both fields is strong enough to tolerate a
+# wider duration gap (a different master, not a different song), and a duration
+# that matches to within 2s is strong enough to forgive a noisy title.
+PERFECT_TEXT_SIM = 0.95
+PERFECT_TEXT_DURATION_S = 15
+TIGHT_DURATION_S = 2
+TIGHT_DURATION_ARTIST_SIM = 0.85
+TIGHT_DURATION_TITLE_SIM = 0.40
+# Review results are published to the playlist, so 'reject' is the only quality
+# gate left and has to actually catch the junk.
+REJECT_TOTAL = 0.55
+REJECT_DURATION_S = 60
 
 W_TITLE, W_ARTIST, W_DURATION = 0.45, 0.35, 0.20
 
@@ -46,7 +62,8 @@ def _key(s: str) -> str:
     s = normalize(s or "")
     s = _QUALIFIER.sub("", s)
     s = _DASH_QUALIFIER.sub("", s)
-    s = _FEAT_PART.sub("", s)
+    s = _FEAT_BRACKETED.sub("", s)
+    s = _FEAT_BARE.sub("", s)
     s = re.sub(r"[^\w\s]", " ", s, flags=re.UNICODE)
     return re.sub(r"\s+", " ", s).strip().lower()
 
@@ -129,12 +146,29 @@ def score(hyp_artist: str, hyp_title: str, cand_title: str, cand_artists: List[s
     if not hyp_artist:
         reasons.append("no_artist_in_hypothesis")
 
-    if (total >= AUTO_TOTAL and title_sim >= AUTO_TITLE_SIM
-            and delta is not None and delta <= AUTO_DURATION_S
-            and "impostor_recording" not in reasons):
+    impostor = "impostor_recording" in reasons
+    perfect_text = title_sim >= PERFECT_TEXT_SIM and artist_sim >= PERFECT_TEXT_SIM
+    tight_duration = delta is not None and delta <= TIGHT_DURATION_S
+
+    auto = not impostor and (
+        # the original balanced path
+        (total >= AUTO_TOTAL and title_sim >= AUTO_TITLE_SIM
+         and delta is not None and delta <= AUTO_DURATION_S)
+        # both fields exact: a wider gap means another master, not another song
+        or (perfect_text and (delta is None or delta <= PERFECT_TEXT_DURATION_S))
+        # the durations all but coincide: trust that over a noisy title
+        or (tight_duration and artist_sim >= TIGHT_DURATION_ARTIST_SIM
+            and title_sim >= TIGHT_DURATION_TITLE_SIM)
+    )
+
+    if auto:
         verdict = "auto"
-    elif total < REJECT_TOTAL:
+    elif (impostor
+          or (delta is not None and delta > REJECT_DURATION_S)
+          or total < REJECT_TOTAL):
         verdict = "reject"
+        if delta is not None and delta > REJECT_DURATION_S:
+            reasons.append(f"duration_off_{delta:.0f}s_rejected")
     else:
         verdict = "review"
         if delta is not None and delta > AUTO_DURATION_S:

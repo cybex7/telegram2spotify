@@ -53,9 +53,16 @@ def test_titleless_hypothesis_cannot_auto_accept():
     s = score("", "Nakhosh", "Nakhosh", ["Someone Else"], 200000, 200)
     assert s.verdict != "auto" and "no_artist_in_hypothesis" in s.reason
 
-def test_unknown_duration_never_auto_accepts():
-    s = score("Anathema", "Are You There", "Are You There", ["Anathema"], None, None)
-    assert s.verdict == "review" and "duration_unknown" in s.reason
+def test_unknown_duration_needs_perfect_text_to_auto_accept():
+    # Policy changed deliberately: an unknown duration no longer blocks a match
+    # whose title AND artist are exact (see test_perfect_text_accepted_when_...).
+    # Anything short of exact still has to be reviewed.
+    # NB 'Are You Here' scores 0.96 against 'Are You There' -- 'here' is a
+    # substring of 'there' -- so this case needs a genuinely different title.
+    s = score("Anathema", "Are You There", "Are You There With Me",
+              ["Anathema"], None, None)
+    assert s.title_sim < 0.95, s
+    assert s.verdict == "review" and "duration_unknown" in s.reason, s
 
 def test_persian_script_exact_match_scores_high():
     s = score("فرهاد مهراد", "آیینه ها", "آیینه ها", ["فرهاد مهراد"], 300000, 300)
@@ -110,3 +117,59 @@ def test_single_artist_name_containing_and_still_matches_whole():
     s = score("Simon and Garfunkel", "The Boxer", "The Boxer",
               ["Simon & Garfunkel"], 200000, 200)
     assert s.artist_sim > 0.9, s
+
+
+# --- loosened auto-accept + hardened reject, since review now enters the playlist
+
+def test_perfect_text_tolerates_a_longer_duration_gap():
+    # Biffy Clyro 'Many Of Horror': title 1.0, artist 1.0, 8.6s apart
+    s = score("Biffy Clyro", "Many Of Horror", "Many of Horror",
+              ["Biffy Clyro"], 258573, 250)
+    assert s.verdict == "auto", s
+
+def test_perfect_text_accepted_when_our_duration_is_unknown():
+    # one of the 11 tracks Telegram gave no duration for
+    s = score("Endless Melancholy", "You Are The Moonlight",
+              "You Are the Moonlight", ["Endless Melancholy"], 200000, None)
+    assert s.verdict == "auto", s
+
+def test_near_exact_duration_outweighs_a_noisy_title():
+    # Hafez Nazeri: our title carries the project name, durations differ by 0.08s
+    s = score("Hafez Nazeri", "Existence Life (Rumi Symphony Project: Untold)",
+              "Existence Life", ["Hafez Nazeri"], 531080, 531)
+    assert s.verdict == "auto", s
+
+def test_minute_scale_duration_gap_is_rejected_not_reviewed():
+    # Gustavo Santaolalla 'Endless Flight': 499s apart, title 0.29 -- with
+    # review going into the playlist, this must not merely be flagged.
+    s = score("Gustavo Santaolalla", "Endless Flight", "Iguazu",
+              ["Gustavo Santaolalla"], 183533, 683)
+    assert s.verdict == "reject", s
+
+def test_karaoke_is_rejected_now_that_review_is_published():
+    s = score("NF", "Can You Hold Me", "Can You Hold Me (Karaoke Version)",
+              ["Karaoke Crew"], 213000, 213)
+    assert s.verdict == "reject", s
+
+def test_moderate_duration_gap_still_only_reviewed():
+    # 40s apart with exact text: probably an extended or live cut of the same
+    # song, so it is still worth publishing rather than discarding
+    s = score("Cigarettes After Sex", "Apocalypse", "Apocalypse",
+              ["Cigarettes After Sex"], 290146, 250)
+    assert s.verdict == "review", s
+
+def test_bare_hypothesis_still_never_auto_accepts():
+    s = score("", "Nakhosh", "Nakhosh", ["Someone Else"], 200000, 200)
+    assert s.verdict != "auto"
+
+
+def test_bare_with_clause_is_part_of_the_title():
+    # 'with X' only marks a collaboration inside brackets. Stripping it bare
+    # made 'Dancing with Myself' score 1.0 against 'Dancing'.
+    s = score("Billy Idol", "Dancing with Myself", "Dancing", ["Billy Idol"], 200000, 200)
+    assert s.title_sim < 0.95, s
+
+def test_bracketed_with_clause_is_still_ignored():
+    s = score("King Raam", "The Last Waltz", "The Last Waltz (with Eendo)",
+              ["King Raam"], 240000, 240)
+    assert s.title_sim == 1.0, s
