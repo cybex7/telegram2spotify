@@ -24,7 +24,11 @@ TOKEN_URL = "https://accounts.spotify.com/api/token"
 REDIRECT_URI = "http://127.0.0.1:8888/callback"
 CALLBACK_PORT = 8888
 CALLBACK_PATH = "/callback"
-SCOPES = "playlist-modify-public playlist-modify-private playlist-read-private"
+SCOPES = ("playlist-modify-public playlist-modify-private playlist-read-private "
+          # Library endpoints answer 403 "Insufficient client scope" rather than a
+          # bare "Forbidden", which suggests they are permitted for this app even
+          # though the playlist-track endpoints are not.
+          "user-library-read user-library-modify")
 
 
 def _b64url(raw: bytes) -> str:
