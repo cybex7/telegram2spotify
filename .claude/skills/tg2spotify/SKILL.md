@@ -11,7 +11,7 @@ repairing the channel's mangled metadata first.
 ## Start here, always
 
 ```bash
-cd "/home/arash/Downloads/Telegram Desktop/tg2spotify" && python3 status.py
+python3 status.py     # from the repo root
 ```
 
 That prints counts, the stored playlist id, report line counts, and the exact
