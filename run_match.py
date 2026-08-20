@@ -4,7 +4,8 @@
     python3 run_match.py            # all tracks
     python3 run_match.py 20         # dry-ish run over the first 20 only
 """
-import os, sys
+import os, socket, sys
+socket.setdefaulttimeout(45)   # a dead proxy must fail fast, not hang
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 from tg2spotify import db, match

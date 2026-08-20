@@ -42,6 +42,11 @@ def run(con, api, limit: Optional[int] = None, verbose: bool = True) -> Dict[str
         todo = todo[:limit]
 
     stats = {"auto": 0, "review": 0, "miss": 0, "searches": 0}
+    # A network outage makes every search raise, which would otherwise be
+    # recorded as "not on Spotify" for all 738 tracks -- a plausible-looking
+    # result that is entirely wrong. Abort instead.
+    dead_streak = 0
+    DEAD_STREAK_LIMIT = 10
 
     for i, row in enumerate(todo, 1):
         mid = row["msg_id"]
@@ -51,6 +56,7 @@ def run(con, api, limit: Optional[int] = None, verbose: bool = True) -> Dict[str
 
         best = None
         best_hyp = None
+        searched_ok = False
         for h in hyps:
             for q in _queries(h["artist"], h["title"]):
                 try:
@@ -59,6 +65,8 @@ def run(con, api, limit: Optional[int] = None, verbose: bool = True) -> Dict[str
                     if verbose:
                         print(f"  #{mid} search failed: {exc}")
                     items = []
+                else:
+                    searched_ok = True
                 stats["searches"] += 1
                 for it in items:
                     s = score(h["artist"], h["title"], it.get("name") or "",
@@ -92,6 +100,17 @@ def run(con, api, limit: Optional[int] = None, verbose: bool = True) -> Dict[str
                       f"|hyp={best_hyp['source']}" if s else "no_candidate"),
                      mid))
         con.commit()
+
+        if searched_ok:
+            dead_streak = 0
+        else:
+            dead_streak += 1
+            if dead_streak >= DEAD_STREAK_LIMIT:
+                raise RuntimeError(
+                    f"network looks down: {dead_streak} consecutive tracks had every "
+                    f"search fail. Stopping so the remaining tracks are not recorded "
+                    f"as 'not on Spotify'. Fix connectivity and re-run -- progress so "
+                    f"far is saved.")
 
         if verbose and (i % 25 == 0 or i == len(todo)):
             print(f"  {i}/{len(todo)}  auto={stats['auto']} "

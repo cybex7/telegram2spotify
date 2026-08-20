@@ -4,7 +4,8 @@
     python3 run_push.py "Music on 🎧"
     python3 run_push.py "Music on 🎧" --include-review
 """
-import os, sys
+import os, socket, sys
+socket.setdefaulttimeout(45)   # a dead proxy must fail fast, not hang
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 from tg2spotify import db, push
