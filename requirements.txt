@@ -1,0 +1,5 @@
+# None. Standard library only — see README ("No dependencies").
+# Optional upgrades if pip ever becomes available on this machine:
+#   mutagen    # replaces src/tg2spotify/id3.py, adds m4a/flac tag reading
+#   rapidfuzz  # faster/better string similarity than difflib
+#   pytest     # replaces tests/run_tests.py
