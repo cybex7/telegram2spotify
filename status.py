@@ -45,6 +45,6 @@ if os.path.isdir(rep):
 print("\nnext step:")
 if todo:
     print("  python3 run_match.py     # %d left; aborts at once if the quota is still spent" % todo)
-    print("  python3 run_export.py    # then refresh import_list.txt / .csv")
-else:
-    print("  python3 run_export.py    # matching complete; just refresh the export")
+pid = pl[0] if pl else "<playlist-id>"
+print('  python3 run_push.py "Music On" "%s" --include-review   # idempotent' % pid)
+print("  python3 run_export.py    # refresh import_list.txt / .csv (fallback record)")

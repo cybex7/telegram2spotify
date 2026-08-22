@@ -1,7 +1,11 @@
 """Stage 6 — fill a playlist with matched tracks, 100 per request.
 
-Creating a playlist returns 403 on this app, so an existing playlist can be
-supplied instead: the user makes an empty one in Spotify and passes its link.
+An existing playlist can be supplied instead of creating one: pass its link and
+an interrupted run tops up the same playlist rather than leaving duplicates.
+
+Writes go to POST /playlists/{id}/items. The retired /tracks sub-resource
+answers a bare 403 "Forbidden" that looks exactly like an app-level ban -- see
+tests/test_playlist_items_path.py.
 """
 
 import re
@@ -27,7 +31,8 @@ def playlist_id_from(ref: Optional[str]) -> str:
 
 def run(con, api, playlist_name: str, public: bool = True,
         include_review: bool = False,
-        existing_playlist: Optional[str] = None) -> Dict[str, object]:
+        existing_playlist: Optional[str] = None,
+        prune: bool = False) -> Dict[str, object]:
     states = ["matched"] + (["review"] if include_review else [])
     rows = con.execute(
         "SELECT msg_id, spotify_uri FROM tracks WHERE status IN (%s) AND spotify_uri IS NOT NULL"
@@ -66,6 +71,17 @@ def run(con, api, playlist_name: str, public: bool = True,
     existing = set(api.playlist_uris(playlist["id"]))
     fresh = [u for u in uris if u not in existing]
 
+    # A re-match can move a track to a better URI, orphaning the one already
+    # pushed -- a wrong song that no longer corresponds to any row. Pruning is
+    # opt-in because it also removes anything the user added to the playlist by
+    # hand, which is exactly what they were told to do for the not-found pile.
+    orphans = sorted(existing - set(uris))
+    pruned = 0
+    if prune and orphans:
+        for i in range(0, len(orphans), BATCH):
+            api.remove_items(playlist["id"], orphans[i:i + BATCH])
+            pruned += len(orphans[i:i + BATCH])
+
     added = 0
     for i in range(0, len(fresh), BATCH):
         chunk = fresh[i:i + BATCH]
@@ -76,4 +92,5 @@ def run(con, api, playlist_name: str, public: bool = True,
     return {"playlist_url": playlist["external_urls"]["spotify"],
             "playlist_id": playlist["id"],
             "candidates": len(rows), "unique": len(uris),
-            "already_present": len(uris) - len(fresh), "added": added}
+            "already_present": len(uris) - len(fresh), "added": added,
+            "orphans": len(orphans), "pruned": pruned}

@@ -10,3 +10,4 @@ reports/
 .resume.complete
 .client_id
 .export_path
+*.log

@@ -50,15 +50,24 @@ for Claude Code sessions.
 
 ## Two Spotify limits that are not bugs
 
-**Playlist writing is unavailable to this app.** `/playlists/{id}/tracks` is
-403 for both read and write, while `/me`, `/me/playlists`, `/playlists/{id}`
-and single `/tracks/{id}` return 200; batch `/tracks?ids=` is 403. This is
-Spotify's restriction on newly created Development-mode apps, not a missing
-scope. Delivery therefore goes through `reports/import_list.txt` plus an
-import service such as Soundiiz or TuneMyMusic, which hold their own write
-access. The pipeline still does the hard part: it converts mangled channel
-tags into confirmed Spotify tracks, so the importer receives canonical
-spelling and matches near-perfectly.
+**Use `/playlists/{id}/items`, never `/playlists/{id}/tracks`.** The `/tracks`
+sub-resource is retired for newly created apps and answers a bare
+`403 {"message": "Forbidden"}` — identical in shape to an app-level ban, with
+no hint that the path itself is the problem. `POST /playlists/{id}/items`
+works with the same token and the same scopes. Two things confirm the scope was
+never at fault: `PUT /playlists/{id}` (editing details, which needs
+`playlist-modify-*`) returns 200, and the playlist object itself links to
+`…/items`. On `/items` the payload field is named `item`, not `track`; reading
+it with the old key silently returns an empty list and makes de-duplication
+believe a full playlist is empty. Both are pinned in
+`tests/test_playlist_items_path.py`.
+
+Genuinely restricted for this app, with no alternative path found:
+`GET|POST /playlists/{id}/tracks`, `GET /users/{id}/playlists`,
+`POST /users/{id}/playlists` (use `POST /me/playlists`), and batch
+`GET /tracks?ids=` (use single `GET /tracks/{id}`). Working: `/me`,
+`/me/playlists`, `/playlists/{id}`, `/playlists/{id}/items`, `/search`,
+`/albums/{id}`.
 
 **Search quota bans last hours.** One 429 asked for a 54,879 second
 (15.2 hour) wait. `api.RateLimited` aborts the run rather than sleeping, and
@@ -68,12 +77,17 @@ retrying a banned endpoint can extend the ban - wait, then re-run.
 
 | | |
 |---|---|
-| matched | 148 |
-| review (published too) | 27 |
-| not found | 25 |
-| still to match | 538 |
-| exported to `import_list.txt` | 173 |
+| **in the playlist** | **281** |
+| matched | 241 |
+| review (published too) | 44 |
+| not found | 36 |
+| still to match | 417 (waiting on search quota, not on code) |
+| exported to `import_list.txt` | 280 |
 | target playlist | set locally, see Setup |
+
+Matching costs ~4 searches per track and a quota window allows roughly 600, so
+the remaining 417 finish across several windows over several days. Playlist
+writes are unaffected by a search ban — push whatever has matched, whenever.
 
 ## Status
 
@@ -83,7 +97,7 @@ retrying a banned endpoint can extend the ban - wait, then re-run.
 | 2 clean + hypotheses | done, 38 tests green |
 | 3 match against Spotify | done, 14 scoring tests green |
 | 4 review CSV | done (`reports/review.csv`) |
-| 6 push to playlist | done |
+| 6 push to playlist | done, direct via `POST /playlists/{id}/items` |
 | 5 fingerprint | deferred — only if misses > 100 |
 
 Configure your own app once (see Setup below). PKCE means no client secret is

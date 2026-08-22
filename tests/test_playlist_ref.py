@@ -1,4 +1,4 @@
-"""Accepting an existing playlist, since creating one returns 403 on this app."""
+"""Accepting an existing playlist, so an interrupted push tops up the same one."""
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from tg2spotify.push import playlist_id_from

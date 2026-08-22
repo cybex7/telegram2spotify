@@ -216,8 +216,9 @@ One implementation detail costs an hour if you miss it: serve the callback
 until the *real* redirect arrives. Chrome also requests `/favicon.ico`, and a
 one-shot handler spends itself on that and then hangs.
 
-**Now the wall.** With a newly created app in Development mode, this is what
-the API actually permits:
+**Now the wall — and the way through it.** With a newly created app in
+Development mode, several endpoints return `403 Forbidden`. Here is what the API
+actually permits:
 
 | Endpoint | Result |
 |---|---|
@@ -226,16 +227,22 @@ the API actually permits:
 | `GET /playlists/{id}` | 200 |
 | `GET /tracks/{id}` (single) | 200 |
 | `GET /search` | 200 (until quota) |
-| `POST /users/{id}/playlists` | **403** |
-| `GET /playlists/{id}/tracks` | **403** |
-| `POST /playlists/{id}/tracks` | **403** |
+| `PUT /playlists/{id}` (edit details) | 200 |
+| `GET /playlists/{id}/items` | 200 |
+| **`POST /playlists/{id}/items`** | **200 — this is how you write** |
+| `GET|POST /playlists/{id}/tracks` | **403** |
+| `POST|GET /users/{id}/playlists` | **403** |
 | `GET /tracks?ids=…` (batch) | **403** |
 
-So a new app **cannot write a playlist at all** — it cannot even read a
-playlist's tracks.
+Read those last three rows against the ones above them. `/playlists/{id}/tracks`
+is 403 while `/playlists/{id}/items` is 200 — **the same playlist, the same
+token, the same scopes.** The `/tracks` sub-resource is retired for new apps.
+The `/items` sub-resource is its live replacement. That is the whole story, and
+it took me a day to see it.
 
-Everyone's first assumption is a forgotten OAuth scope, so I recorded what
-Spotify actually granted:
+I want to be honest about how I got it wrong, because the mistake is the useful
+part. I saw `403 Forbidden` on every playlist write, checked that the scopes
+were granted:
 
 ```
 playlist-modify-private
@@ -243,26 +250,54 @@ playlist-modify-public
 playlist-read-private
 ```
 
-Both write scopes are present, and the writes still return 403. The
-restriction is at the app level, not the scope level, and no amount of code
-fixes it. If you plan an evening around
-"the API will add the tracks", plan differently.
+…and concluded that the restriction must be at the app level — Spotify banning
+Development-mode apps from playlist writes. It was a coherent theory. It
+explained every observation I had. I wrote it into the documentation, designed a
+whole fallback delivery path around it, and started investigating whether the
+*library* endpoints might be writable instead.
 
-There is a second, softer wall: search quota. One 429 came back with
+The theory was wrong, and two cheap calls would have refuted it:
+
+- **`PUT /playlists/{id}`** — editing a playlist's description requires
+  `playlist-modify-public`, exactly like adding tracks. It returned **200**. So
+  playlist write permission was working the entire time. A ban on writes that
+  permits a write is not a ban.
+- **`GET /playlists/{id}`** — the playlist object Spotify handed back contained
+  a link to its own contents, and that link read
+  `…/playlists/{id}/items?offset=0&limit=0`. **Not `/tracks`.** The API had been
+  telling me the correct path in every response I had already received.
+
+The lesson generalizes past Spotify. `403 Forbidden` with no detail is not a
+diagnosis, it is the absence of one. A generic error is compatible with many
+theories, and the instinct to accept the first coherent one is exactly what you
+have to resist. The question to ask is not "does my theory explain what I see?"
+but **"what call would come out differently if my theory were wrong?"** — then
+make that call. I skipped that step and paid a day for it.
+
+One more trap follows immediately, and it fails *silently*: on `/items`, each
+entry's payload field is named `item`. On the retired `/tracks` it was `track`.
+My de-duplication read `item.track.uri`, got `None` for everything, concluded
+the playlist was empty, and would have cheerfully re-added all 174 tracks on
+every run. A 403 shouts. This just quietly returns the wrong answer, which is
+worse. Both the path and the field name are now pinned by tests.
+
+There is a second, genuinely hard wall: search quota. One 429 came back with
 `Retry-After: 54879` — a **15.2 hour** ban. Do not retry against it; repeat
 calls can extend it.
 
 ## Alternatives, ranked by how well they actually work
 
-1. **An import service, fed a clean list.** Soundiiz and TuneMyMusic hold their
-   own write access to Spotify and accept a pasted `Artist - Title` list. This
-   is the delivery path that works today. Crucially, the pipeline above is still
-   what makes it work: the importer receives Spotify's own canonical spelling
-   instead of `@moozikestan_bot - …`.
-2. **An older Spotify app**, created before the restrictions, may still have
-   write access. Worth checking if you have one.
+1. **The API itself, via `POST /playlists/{id}/items`.** This is the delivery
+   path, and it needs nothing but a free app and a client id. Everything below
+   is a fallback for cases where it genuinely is not available to you.
+2. **An import service, fed a clean list.** Soundiiz and TuneMyMusic hold their
+   own write access and accept a pasted `Artist - Title` list. Worth knowing
+   about, and worth noting that the pipeline above is what makes it work: the
+   importer receives Spotify's own canonical spelling instead of
+   `@moozikestan_bot - …`. But it is a manual hop you probably do not need.
 3. **Request extended quota** in the dashboard — a form and a review, and
-   realistically not granted for hobby projects.
+   realistically not granted for hobby projects. Relevant to search volume, not
+   to writes.
 4. **Audio fingerprinting** (`shazamio`, AcoustID/Chromaprint) identifies a
    track from the audio itself, ignoring text entirely. This is the right tool
    for files whose tags are hopeless, and it sidesteps transliteration
@@ -278,13 +313,24 @@ calls can extend it.
 
 ## Results, honestly
 
-Over the first 200 tracks:
+Over the first 321 tracks of 738 processed so far:
 
 | Outcome | Count | Share |
 |---|---|---|
-| Matched automatically | 148 | 74% |
-| Held for review (published anyway, by choice) | 27 | 13.5% |
-| Not found | 25 | 12.5% |
+| Matched automatically | 241 | 75.1% |
+| Held for review (published anyway, by choice) | 44 | 13.7% |
+| Not found | 36 | 11.2% |
+
+**281 tracks are in the playlist**, written directly by the API. The remaining
+417 are waiting on search quota, not on code: two 429 bans (15.2h, then 23.8h)
+have been the only thing setting the pace. Matching costs roughly 4 searches per
+track, and a quota window allows something like 600 — so this finishes over
+days, in windows, not in one run. That is worth knowing before you start.
+
+One measurement that changed the design: re-trying tracks that already failed is
+almost pure waste. 52 previously-unresolved tracks consumed 353 searches — more
+than half a quota window — and converted exactly one. Re-trying them is now
+opt-in behind a flag, to be used after the cleaning rules change and not before.
 
 52 of the matched tracks had their artist tag *corrected* — the Telegram tag
 was wrong, and duration plus title found the truth. Some pleasing ones:
@@ -320,12 +366,24 @@ That is the honest limit of the whole approach: it identifies *songs*, not
   surviving channel branding, the multi-artist fields, the bare `with`. A
   20-track sample found four defects that no amount of design would have.
 - **Pin each defect with a test using the real string that broke it.** I ended
-  with 94 tests, all offline, every case lifted from the actual channel.
+  with 100 tests, all offline, every case lifted from the actual channel — and
+  six of them exist purely to stop a future session from reverting to the
+  retired API path.
 - **Make everything resumable.** Store per-track state as you go. Between rate
   limits, dead proxies and a 15-hour ban, my run was interrupted repeatedly and
   never lost work.
 - **A stalled job looks exactly like a working one.** I watched process
   liveness instead of progress and lost eight hours to a job sleeping on a
   Retry-After. Poll the row count.
-- **Read the API's error body.** A bare `403 Forbidden` cost a full debugging
-  cycle that the response body would have ended immediately.
+- **Read the API's error body** — and do not stop there. A generic
+  `403 Forbidden` is not a diagnosis. Before you accept a theory, name the call
+  whose result would differ if the theory were false, and make that call. Mine
+  was `PUT /playlists/{id}`; it took thirty seconds and it would have saved a
+  day.
+- **Read the responses you already have.** Spotify had been returning the
+  correct endpoint path inside every playlist object I fetched. The answer was
+  sitting in data I had printed and not looked at.
+- **Distrust the errors that do not shout.** The retired path returned 403 and
+  I noticed within seconds. The renamed `track` → `item` field returned an empty
+  list, which read as "the playlist is empty" and would have silently duplicated
+  every track. Silent wrong answers cost more than loud failures.

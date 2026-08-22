@@ -8,10 +8,11 @@ from tg2spotify import db, push
 
 class FakeApi:
     """Records what was asked of it, so the test can assert on the calls."""
-    def __init__(self, existing=None):
+    def __init__(self, existing=None, pid="pl1"):
         self.created = []
         self.added = []
-        self.store = {"pl1": list(existing or [])}
+        self.removed = []
+        self.store = {pid: list(existing or [])}
 
     def me(self):
         return {"id": "arash"}
@@ -34,6 +35,11 @@ class FakeApi:
     def add_items(self, pid, uris):
         self.store[pid].extend(uris)
         self.added.append(list(uris))
+        return {}
+
+    def remove_items(self, pid, uris):
+        self.removed.append(list(uris))
+        self.store[pid] = [u for u in self.store[pid] if u not in set(uris)]
         return {}
 
 
@@ -84,3 +90,31 @@ def test_review_rows_only_included_when_asked(tmp="/tmp/tg2s_push_d.sqlite"):
                                            (2, "spotify:track:b", "review")])
     api2 = FakeApi()
     assert push.run(con2, api2, "P", include_review=True)["added"] == 2
+
+
+def test_orphans_are_reported_but_kept_by_default(tmp="/tmp/tg2s_push_orphan.sqlite"):
+    """A re-match can move a track to a better URI, leaving the old one behind.
+
+    It is a real wrong song in the playlist, so it must be counted -- but not
+    deleted unasked: the user was told to add the not-found pile by hand, and
+    those additions are indistinguishable from orphans.
+    """
+    if os.path.exists(tmp): os.remove(tmp)
+    con = _db(tmp, [(1, "spotify:track:new", "matched")])
+    PID = "0TkJ5AgcefGgvG26eGTRze"
+    api = FakeApi(existing=["spotify:track:stale", "spotify:track:by_hand"], pid=PID)
+    res = push.run(con, api, "Music on 🎧", existing_playlist=PID)
+    assert res["orphans"] == 2, res
+    assert res["pruned"] == 0, res
+    assert api.removed == [], api.removed
+    assert "spotify:track:by_hand" in api.playlist_uris(PID)
+
+
+def test_prune_removes_orphans_when_asked(tmp="/tmp/tg2s_push_prune.sqlite"):
+    if os.path.exists(tmp): os.remove(tmp)
+    con = _db(tmp, [(1, "spotify:track:new", "matched")])
+    PID = "0TkJ5AgcefGgvG26eGTRze"
+    api = FakeApi(existing=["spotify:track:stale"], pid=PID)
+    res = push.run(con, api, "Music on 🎧", existing_playlist=PID, prune=True)
+    assert res["pruned"] == 1, res
+    assert api.playlist_uris(PID) == ["spotify:track:new"], api.playlist_uris(PID)

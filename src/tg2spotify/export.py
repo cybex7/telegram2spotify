@@ -1,11 +1,12 @@
-"""Export matched tracks in a form an import service can consume.
+"""Export matched tracks in a form a human or an import service can consume.
 
-Spotify's API refuses playlist writes for this app (403 on
-/playlists/{id}/tracks), so the final hop goes through Soundiiz or
-TuneMyMusic, which hold their own write access. They match on plain
-"Artist - Title" text, and by this point that text is Spotify's own
-canonical spelling rather than the channel's mangled tags -- which is the
-whole point of the pipeline.
+Playlist writes now work directly (POST /playlists/{id}/items), so this stage is
+no longer the delivery path -- it is kept as a readable record of what matched
+and as a fallback for anyone whose app cannot write playlists.
+
+The lines are plain "Artist - Title", and by this point that text is Spotify's
+own canonical spelling rather than the channel's mangled tags, which is the
+whole point of the pipeline. Soundiiz and TuneMyMusic consume it as-is.
 """
 
 import csv

@@ -113,7 +113,7 @@ class Spotify:
 
     def create_playlist(self, user_id: str, name: str, public: bool = True,
                         description: str = "") -> dict:
-        return self._request("POST", f"/users/{user_id}/playlists",
+        return self._request("POST", "/me/playlists",
                              body={"name": name, "public": public,
                                    "description": description})
 
@@ -122,18 +122,26 @@ class Spotify:
                              params={"fields": "id,name,external_urls"})
 
     def add_items(self, playlist_id: str, uris: List[str]) -> dict:
-        return self._request("POST", f"/playlists/{playlist_id}/tracks",
+        return self._request("POST", f"/playlists/{playlist_id}/items",
                              body={"uris": uris})
+
+    def remove_items(self, playlist_id: str, uris: List[str]) -> dict:
+        """Drop URIs from a playlist. The delete body keys on "items" too."""
+        return self._request("DELETE", f"/playlists/{playlist_id}/items",
+                             body={"items": [{"uri": u} for u in uris]})
 
     def playlist_uris(self, playlist_id: str) -> List[str]:
         """Existing track URIs, so a re-run never double-adds."""
         out, offset = [], 0
         while True:
-            page = self._request("GET", f"/playlists/{playlist_id}/tracks",
+            page = self._request("GET", f"/playlists/{playlist_id}/items",
                                  params={"limit": 100, "offset": offset,
-                                         "fields": "items(track(uri)),total"})
+                                         "fields": "items(item(uri)),total"})
             items = page.get("items") or []
-            out.extend((i.get("track") or {}).get("uri") for i in items if i.get("track"))
+            # /items names the payload "item"; the retired /tracks called it "track"
+            for i in items:
+                entry = i.get("item") or i.get("track") or {}
+                out.append(entry.get("uri"))
             offset += len(items)
             if not items or offset >= page.get("total", 0):
                 return [u for u in out if u]

@@ -1,5 +1,5 @@
-"""Import-list formatting. Feeds Soundiiz / TuneMyMusic, which do have write
-access to Spotify -- the API write path is 403 for this app."""
+"""Import-list formatting. A fallback to the direct API write path, and the
+readable record of what the pipeline matched."""
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from tg2spotify.export import import_line, track_url

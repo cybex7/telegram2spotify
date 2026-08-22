@@ -35,9 +35,21 @@ def _queries(artist: str, title: str) -> List[str]:
     return out
 
 
-def run(con, api, limit: Optional[int] = None, verbose: bool = True) -> Dict[str, int]:
+def run(con, api, limit: Optional[int] = None, verbose: bool = True,
+        retry_hard: bool = False) -> Dict[str, int]:
+    """Match unmatched tracks. Search quota is the scarce resource, not time.
+
+    `review` and `miss` tracks already spent their whole hypothesis budget and
+    found nothing better; re-running them costs ~7 searches each to convert
+    about one in fifty. Measured: 52 such tracks burned 353 searches for a
+    single new match, more than half a quota window, before any fresh track was
+    reached. So they are skipped unless retry_hard is set -- worth doing after
+    the cleaning rules change, and not before.
+    """
+    states = ["ingested"] + (["review", "miss"] if retry_hard else [])
     todo = con.execute(
-        "SELECT * FROM tracks WHERE status IN ('ingested','review','miss') ORDER BY msg_id"
+        "SELECT * FROM tracks WHERE status IN (%s) ORDER BY msg_id"
+        % ",".join("?" * len(states)), states
     ).fetchall()
     if limit:
         todo = todo[:limit]

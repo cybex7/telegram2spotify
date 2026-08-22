@@ -15,13 +15,16 @@ from tg2spotify.auth import Auth
 from tg2spotify.config import client_id
 args = [a for a in sys.argv[1:] if not a.startswith("--")]
 name = args[0] if args else "Music on 🎧"
-# second argument: link to a playlist you already created (creation is 403 here)
+# second argument: link to a playlist you already created, to top it up instead
+# of making a new one
 existing = args[1] if len(args) > 1 else os.environ.get("SPOTIFY_PLAYLIST")
 include_review = "--include-review" in sys.argv
+# --prune also deletes tracks you added to the playlist by hand. Off by default.
+prune = "--prune" in sys.argv
 
 con = db.connect(os.path.join(ROOT, "state.sqlite"))
 api = Spotify(Auth(client_id(), os.path.join(ROOT, ".spotify_token.json")))
 result = push.run(con, api, name, public=True, include_review=include_review,
-                  existing_playlist=existing)
+                  existing_playlist=existing, prune=prune)
 for k, v in result.items():
     print(f"{k:14} {v}")
