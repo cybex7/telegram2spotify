@@ -2,8 +2,8 @@
 
 I had eight and a half years of music sitting in a Telegram channel — 738 audio
 files, 6.3 GB, posted between January 2018 and August 2026 — and I wanted it as
-a Spotify playlist. This is what the problem actually looks like, what worked,
-what Spotify refuses to let you do, and what I would tell anyone attempting it.
+a Spotify playlist. This is what the problem actually looks like, what worked, the one
+misdiagnosis that cost a full day, and what I would tell anyone attempting it.
 
 Everything below is measured on that real archive, not estimated.
 
@@ -313,24 +313,33 @@ calls can extend it.
 
 ## Results, honestly
 
-Over the first 321 tracks of 738 processed so far:
+All 738 tracks, final:
 
 | Outcome | Count | Share |
 |---|---|---|
-| Matched automatically | 241 | 75.1% |
-| Held for review (published anyway, by choice) | 44 | 13.7% |
-| Not found | 36 | 11.2% |
+| Matched automatically | 596 | 80.8% |
+| Held for review (published anyway, by choice) | 64 | 8.7% |
+| Not found | 78 | 10.6% |
 
-**281 tracks are in the playlist**, written directly by the API. The remaining
-417 are waiting on search quota, not on code: two 429 bans (15.2h, then 23.8h)
-have been the only thing setting the pace. Matching costs roughly 4 searches per
-track, and a quota window allows something like 600 — so this finishes over
-days, in windows, not in one run. That is worth knowing before you start.
+**642 unique tracks are in the playlist**, written directly by the API — 660
+matched-or-review rows collapse to 642 URIs because of the corpus's 12
+duplicate performer+title pairs and 4 duplicate filenames, exactly as the
+de-duplication was designed to handle. Verified against the live playlist
+afterward: 0 missing, 0 extra, 0 orphans.
 
-One measurement that changed the design: re-trying tracks that already failed is
-almost pure waste. 52 previously-unresolved tracks consumed 353 searches — more
-than half a quota window — and converted exactly one. Re-trying them is now
-opt-in behind a flag, to be used after the cleaning rules change and not before.
+It took three passes across roughly a day and a half, entirely because of
+search quota, not code: three 429 bans (15.2h, 23.8h, 23.9h) set the pace.
+Matching costs roughly 4 searches per track against a ban that allows perhaps
+600 searches per window — so budget multiple windows, not one run, if your
+catalog is in the hundreds.
+
+One measurement that changed the design mid-run: re-trying tracks that already
+failed is almost pure waste. 52 previously-unresolved tracks consumed 353
+searches — more than half a quota window — and converted exactly one.
+Re-trying them is opt-in behind a flag now, for after the cleaning rules
+change, not before. The 78 that never matched are Telegram's genuine catalog
+gaps — under the 100-track manual threshold set at the start, each with a
+ready search link in `reports/not_found.csv`.
 
 52 of the matched tracks had their artist tag *corrected* — the Telegram tag
 was wrong, and duration plus title found the truth. Some pleasing ones:

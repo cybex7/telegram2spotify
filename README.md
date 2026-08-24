@@ -73,21 +73,28 @@ Genuinely restricted for this app, with no alternative path found:
 (15.2 hour) wait. `api.RateLimited` aborts the run rather than sleeping, and
 retrying a banned endpoint can extend the ban - wait, then re-run.
 
-## Current state
+## Current state — complete
+
+All 738 tracks have been processed and pushed.
 
 | | |
 |---|---|
-| **in the playlist** | **281** |
-| matched | 241 |
-| review (published too) | 44 |
-| not found | 36 |
-| still to match | 417 (waiting on search quota, not on code) |
-| exported to `import_list.txt` | 280 |
-| target playlist | set locally, see Setup |
+| **in the playlist** | **642** |
+| matched automatically | 596 |
+| review (published too) | 64 |
+| not found (manual pile) | 78 |
+| exported to `import_list.txt` | 642 |
+| target playlist | https://open.spotify.com/playlist/0TkJ5AgcefGgvG26eGTRze |
 
-Matching costs ~4 searches per track and a quota window allows roughly 600, so
-the remaining 417 finish across several windows over several days. Playlist
-writes are unaffected by a search ban — push whatever has matched, whenever.
+642 unique tracks from 660 matched+review rows: the corpus's 12 duplicate
+performer+title pairs and 4 duplicate filenames collapse onto shared URIs, as
+designed. Verified against the live playlist: 0 missing, 0 extra, 0 orphans.
+
+It took three quota windows across roughly a day and a half — matching runs
+~4 searches per track against a ~600-search-per-window ban, so pace future
+reruns (e.g. after a cleaning-rule change) accordingly. The 78-track manual
+pile is in `reports/not_found.csv`, each row with a ready `open.spotify.com`
+search link — under the 100-track threshold the user set as acceptable.
 
 ## Status
 
