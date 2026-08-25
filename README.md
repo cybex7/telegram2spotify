@@ -6,6 +6,24 @@ channel's broken metadata first.
 
 Design: [docs/superpowers/specs/2026-08-15-telegram-to-spotify-design.md](docs/superpowers/specs/2026-08-15-telegram-to-spotify-design.md)
 
+## Do you need an AI to run this?
+
+No. Every stage below is a deterministic Python script -- regexes, a weighted
+similarity score, HTTP calls to the Spotify Web API. Nothing in `src/` calls an
+LLM, and a normal run is `python3 run_ingest.py && python3 run_match.py &&
+python3 run_push.py ...`, or just `./autopilot.sh` for the whole thing
+unattended. Clone it, run the scripts, done.
+
+What an AI (Claude) actually did here: wrote this pipeline, and debugged it
+against one specific messy real-world Telegram export -- see
+[docs/ARTICLE.en.md](docs/ARTICLE.en.md) / [docs/ARTICLE.fa.md](docs/ARTICLE.fa.md)
+for the full account, including every bug that real data surfaced. The one
+place an AI (or a human, with more regex-writing) might still earn its keep is
+`src/tg2spotify/clean.py`: its rules were tuned to *this* channel's junk
+patterns (`@handle` spam, specific bracket-junk, Persian folding). A channel
+with differently-shaped mess may need those rules extended -- that is a one-time
+edit to one file, not a requirement to run the tool at all.
+
 ## No dependencies
 
 Pure Python standard library — this machine has no `pip`/`venv`
@@ -16,15 +34,25 @@ ID3v2 reader standing in for `mutagen`.
 ## Run
 
 ```bash
-python3 tests/run_tests.py       # 52 tests: cleaning + scoring
+python3 tests/run_tests.py       # 100 tests: cleaning + scoring + API paths
 python3 run_ingest.py            # stage 1+2: export -> state.sqlite + reports/cleaned.csv
 python3 run_match.py 20          # stage 3 on 20 tracks first, to sanity-check
-python3 run_match.py             # stage 3 on all 738 (resumable)
-python3 run_push.py "Music on 🎧" # stage 6: create the playlist and add matches
+python3 run_match.py             # stage 3 on the rest (resumable; aborts clean on a search-quota ban)
+python3 run_push.py "Music on 🎧" "<playlist-id>" --include-review  # stage 6, idempotent
+python3 run_export.py            # canonical names -> reports/import_list.txt (fallback record)
+python3 run_audit.py             # not-found + published-review + weak-auto-match, one CSV
+python3 status.py                # one-command state dump; always read this first
 ```
 
 The first `run_match.py` opens Spotify once for a single consent click, then
 caches the token in `.spotify_token.json` (gitignored, mode 600).
+
+For a catalog too large to finish inside one search-quota window, run
+`./autopilot.sh "Playlist name" <playlist-id> --include-review` instead of
+`run_match.py`/`run_push.py`/`run_export.py` by hand: it loops match -> push ->
+export, sleeps exactly as long as Spotify's `Retry-After` says on a 429, and
+stops on its own once every track is resolved. `nohup ./autopilot.sh ... &`
+survives a closed terminal.
 
 ## Setup
 

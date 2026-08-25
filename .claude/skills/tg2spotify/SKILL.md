@@ -27,6 +27,8 @@ python3 tests/run_tests.py   # 100 tests, all offline. Run after ANY code change
 python3 run_match.py         # match remaining tracks against Spotify (resumable)
 python3 run_push.py "Music On" "<playlist-id>" --include-review   # push (idempotent)
 python3 run_export.py        # refresh reports/import_list.txt + .csv
+python3 run_audit.py         # not-found + published-review + weak-auto-match, one CSV
+./autopilot.sh "Music On" "<playlist-id>" --include-review   # match+push+export on a loop, no AI needed
 ```
 
 Everything is resumable through `state.sqlite`; re-running never repeats
