@@ -24,6 +24,33 @@ class RateLimited(RuntimeError):
     against a banned endpoint can extend the ban."""
 
 
+def _explain_http_error(code: int, method: str, path: str, detail: str) -> str:
+    """A plain-language guess at what a 4xx that isn't 401/404/429/5xx means,
+    so a human can fix it without needing to ask an AI what Spotify meant."""
+    low = detail.lower()
+    if code == 403:
+        if "insufficient client scope" in low:
+            return ("the token is missing a scope this call needs. Add it to "
+                    "SCOPES in auth.py, delete .spotify_token.json, and run "
+                    "again for a fresh consent.")
+        if "/playlists/" in path and path.rstrip("/").endswith("/tracks"):
+            return ("Spotify retired this sub-resource for newer apps -- use "
+                    "/playlists/{id}/items instead (see add_items/playlist_uris "
+                    "in this file).")
+        return ("check that every scope this call needs is both in SCOPES "
+                "(auth.py) and was actually granted -- delete "
+                ".spotify_token.json and re-run to force a fresh consent "
+                "screen, then check the scopes listed there.")
+    if code == 404:
+        return ("the id in this request may be wrong, deleted, or belongs to "
+                "a different account than the one that authorised this token.")
+    if code == 400:
+        return ("the request itself was malformed -- most likely a bug in "
+                "this codebase rather than something to fix in your setup. "
+                "please open an issue with this exact message.")
+    return "see the message above; https://developer.spotify.com/documentation/web-api has the full error reference."
+
+
 class Spotify:
     def __init__(self, auth, max_retries: int = 5,
                  min_interval: float = MIN_REQUEST_INTERVAL_S):
@@ -61,7 +88,13 @@ class Spotify:
                 with self._open(req, timeout=30) as resp:
                     self.calls += 1
                     raw = resp.read()
-                    return json.loads(raw.decode()) if raw else {}
+                return json.loads(raw.decode()) if raw else {}
+            except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+                raise RuntimeError(
+                    f"{method} {path} -> Spotify's response was not valid JSON. "
+                    f"This is unusual; try again, and check "
+                    f"https://developer.spotify.com/status if it keeps happening."
+                ) from exc
             except urllib.error.HTTPError as exc:
                 if exc.code == 429:
                     wait = int(exc.headers.get("Retry-After", "2")) + 1
@@ -76,20 +109,44 @@ class Spotify:
                     print(f"  rate limited, sleeping {wait}s")
                     self._sleep(wait)
                     continue
-                if exc.code == 401 and attempt == 0:
-                    self.auth._tok.pop("access_token", None)   # force a refresh
-                    continue
+                if exc.code == 401:
+                    if attempt == 0:
+                        self.auth._tok.pop("access_token", None)   # force a refresh
+                        continue
+                    raise RuntimeError(
+                        f"{method} {path} -> HTTP 401, still unauthorised after "
+                        f"refreshing the token. The refresh token itself is "
+                        f"probably invalid (you removed the app's access under "
+                        f"Spotify account -> Apps, or a scope changed).\n"
+                        f"  fix: delete .spotify_token.json and run again for a "
+                        f"fresh consent."
+                    ) from exc
                 if exc.code >= 500:
-                    self._sleep(2 ** attempt)
-                    continue
+                    if attempt < self.max_retries - 1:
+                        self._sleep(2 ** attempt)
+                        continue
+                    raise RuntimeError(
+                        f"{method} {path} -> HTTP {exc.code} from Spotify after "
+                        f"{self.max_retries} attempts. This is on Spotify's side, "
+                        f"not a bug here -- wait a few minutes and run again; "
+                        f"progress is saved."
+                    ) from exc
                 # Spotify explains itself in the body; hiding it wastes a debug cycle.
                 try:
                     detail = exc.read().decode(errors="replace")[:400]
                 except Exception:
                     detail = "<no body>"
                 raise RuntimeError(
-                    f"{method} {path} -> HTTP {exc.code}: {detail}") from exc
-            except urllib.error.URLError:
+                    f"{method} {path} -> HTTP {exc.code}: {detail}\n"
+                    f"  hint: {_explain_http_error(exc.code, method, path, detail)}"
+                ) from exc
+            except urllib.error.URLError as exc:
+                if attempt == self.max_retries - 1:
+                    raise RuntimeError(
+                        f"{method} {path} failed after {self.max_retries} "
+                        f"attempts: {exc.reason}. Check your internet connection "
+                        f"and run again; progress is saved."
+                    ) from exc
                 self._sleep(2 ** attempt)
             except (http.client.IncompleteRead, http.client.RemoteDisconnected,
                     ConnectionError, socket.timeout) as exc:
@@ -97,7 +154,12 @@ class Spotify:
                 # Without this the hypothesis was silently skipped, quietly
                 # costing the track its best chance of a match.
                 if attempt == self.max_retries - 1:
-                    raise
+                    raise RuntimeError(
+                        f"{method} {path} failed after {self.max_retries} "
+                        f"attempts: {type(exc).__name__}: {exc}. This usually "
+                        f"clears on its own -- run again in a moment; progress "
+                        f"is saved."
+                    ) from exc
                 self._sleep(2 ** attempt)
         raise RuntimeError(f"giving up on {method} {path}")
 

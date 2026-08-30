@@ -14,6 +14,7 @@ import os
 import secrets
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import webbrowser
@@ -70,12 +71,39 @@ class _CallbackHandler(http.server.BaseHTTPRequestHandler):
         pass  # keep the terminal clean
 
 
+_TOKEN_ERROR_HINTS = {
+    "invalid_client": "the client id in .client_id looks wrong -- copy it again "
+                     "from developer.spotify.com/dashboard (this uses PKCE, so "
+                     "no client secret is ever needed).",
+    "invalid_grant": "the authorisation code or refresh token is no longer "
+                     "valid -- it expires within minutes, may have been used "
+                     "already, or app access was revoked under Spotify "
+                     "account -> Apps. Just run the script again.",
+    "invalid_request": "check that the app's Redirect URI is set to exactly "
+                       "http://127.0.0.1:8888/callback (no trailing slash, "
+                       "exact scheme/host/port) in developer.spotify.com/dashboard.",
+}
+
+
 def _post_form(data: dict) -> dict:
     req = urllib.request.Request(
         TOKEN_URL, data=urllib.parse.urlencode(data).encode(),
         headers={"Content-Type": "application/x-www-form-urlencoded"})
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        return json.loads(resp.read().decode())
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read().decode())
+    except urllib.error.HTTPError as exc:
+        try:
+            body = json.loads(exc.read().decode(errors="replace"))
+        except Exception:
+            body = {}
+        err = body.get("error", "")
+        desc = body.get("error_description", "")
+        hint = _TOKEN_ERROR_HINTS.get(err, "see the message above for details.")
+        raise RuntimeError(
+            f"Spotify token request failed: {err or exc.code} {desc}\n"
+            f"  hint: {hint}"
+        ) from exc
 
 
 class Auth:
@@ -162,12 +190,20 @@ class Auth:
         deadline = time.time() + 300
         while _CallbackHandler.code is None and _CallbackHandler.error is None:
             if time.time() > deadline:
-                raise TimeoutError("no callback within 5 minutes")
+                server.shutdown()
+                server.server_close()
+                raise TimeoutError(
+                    "no callback within 5 minutes -- the consent page was never "
+                    "opened, or timed out waiting for a click. Run this again "
+                    "and click Allow on the Spotify page promptly.")
             time.sleep(0.3)
         server.shutdown()
         server.server_close()
         if _CallbackHandler.error:
-            raise RuntimeError("authorisation denied: " + _CallbackHandler.error)
+            raise RuntimeError(
+                "authorisation denied: " + _CallbackHandler.error +
+                " -- run this again and click Allow (not Cancel) on the "
+                "Spotify consent page.")
 
         return self._store(_post_form({
             "grant_type": "authorization_code",
