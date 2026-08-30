@@ -1,171 +1,144 @@
 # tg2spotify
 
-Imports the music archive of the Telegram channel *Music on 🎧* (738 audio
-tracks, exported 2018-01-17 → 2026-08-08) into a Spotify playlist, repairing the
-channel's broken metadata first.
+**Do you also have this problem — hundreds of songs sitting in a Telegram
+channel that never made it into your Spotify?**
 
-Design: [docs/superpowers/specs/2026-08-15-telegram-to-spotify-design.md](docs/superpowers/specs/2026-08-15-telegram-to-spotify-design.md)
+This tool reads a Telegram channel export, fixes the broken artist/title tags
+(Telegram exports are notoriously messy: empty fields, swapped artist/title,
+channel spam baked into the name), matches each track against Spotify's real
+catalog, and adds the matches to a playlist — for hundreds of tracks at once,
+without you typing a single song name by hand.
 
-## Do you need an AI to run this?
+It was built and tested end-to-end on a real, messy archive: 738 tracks, 8.5
+years of posts, mixed Persian and international music. 642 of them (87%)
+ended up in the playlist automatically. [Read the full story, including
+every bug real data exposed →](docs/ARTICLE.en.md) ([فارسی](docs/ARTICLE.fa.md))
 
-No. Every stage below is a deterministic Python script -- regexes, a weighted
-similarity score, HTTP calls to the Spotify Web API. Nothing in `src/` calls an
-LLM, and a normal run is `python3 run_ingest.py && python3 run_match.py &&
-python3 run_push.py ...`, or just `./autopilot.sh` for the whole thing
-unattended. Clone it, run the scripts, done.
+## Do you need AI to run this?
 
-What an AI (Claude) actually did here: wrote this pipeline, and debugged it
-against one specific messy real-world Telegram export -- see
-[docs/ARTICLE.en.md](docs/ARTICLE.en.md) / [docs/ARTICLE.fa.md](docs/ARTICLE.fa.md)
-for the full account, including every bug that real data surfaced. The one
-place an AI (or a human, with more regex-writing) might still earn its keep is
-`src/tg2spotify/clean.py`: its rules were tuned to *this* channel's junk
-patterns (`@handle` spam, specific bracket-junk, Persian folding). A channel
-with differently-shaped mess may need those rules extended -- that is a one-time
-edit to one file, not a requirement to run the tool at all.
+**No.** Every step below is a plain Python script — regexes, a similarity
+score, HTTP calls to Spotify. Nothing here calls an LLM, and a normal run is
+just the commands in "Run it" below, or `./autopilot.sh` for the whole thing
+unattended.
 
-## No dependencies
+An AI (Claude) was used to *build* this and debug it against one real messy
+channel — see the article above for that whole story. The one place AI (or
+manual regex-writing) might still help *you* specifically: `clean.py`'s
+cleaning rules were tuned to one channel's junk patterns. If your channel's
+mess looks different, you may need to extend a few regexes in one file —
+that's a one-time edit, not a requirement to run the tool.
 
-Pure Python standard library — this machine has no `pip`/`venv`
-(`apt install python3.12-venv` would be needed). `difflib` stands in for
-`rapidfuzz`, `urllib` for `requests`, and `src/tg2spotify/id3.py` is a minimal
-ID3v2 reader standing in for `mutagen`.
+## What you need
 
-## Run
+- Python 3 — no extra packages, pure standard library
+- A Telegram channel export (from Telegram Desktop, JSON format)
+- A free Spotify Developer account (2 minutes, no credit card)
 
-```bash
-python3 tests/run_tests.py       # 100 tests: cleaning + scoring + API paths
-python3 run_ingest.py            # stage 1+2: export -> state.sqlite + reports/cleaned.csv
-python3 run_match.py 20          # stage 3 on 20 tracks first, to sanity-check
-python3 run_match.py             # stage 3 on the rest (resumable; aborts clean on a search-quota ban)
-python3 run_push.py "Music on 🎧" "<playlist-id>" --include-review  # stage 6, idempotent
-python3 run_export.py            # canonical names -> reports/import_list.txt (fallback record)
-python3 run_audit.py             # not-found + published-review + weak-auto-match, one CSV
-python3 status.py                # one-command state dump; always read this first
-```
+## Quick start
 
-The first `run_match.py` opens Spotify once for a single consent click, then
-caches the token in `.spotify_token.json` (gitignored, mode 600).
+### 1. Export your Telegram channel
 
-For a catalog too large to finish inside one search-quota window, run
-`./autopilot.sh "Playlist name" <playlist-id> --include-review` instead of
-`run_match.py`/`run_push.py`/`run_export.py` by hand: it loops match -> push ->
-export, sleeps exactly as long as Spotify's `Retry-After` says on a 429, and
-stops on its own once every track is resolved. `nohup ./autopilot.sh ... &`
-survives a closed terminal.
+Telegram Desktop → the channel → ⋮ menu → **Export chat history** → format
+**Machine-readable JSON**.
 
-## Setup
+**Skip downloading the audio if you can.** There's a media size-limit slider
+in the export dialog — drag it to the minimum. You still get every song's
+artist, title, caption, filename, and (for almost all tracks) duration; you
+just skip downloading gigabytes of audio you don't strictly need. Measured on
+this project's own 738-track run: only 1.5% of tracks needed the actual file
+for anything.
 
-```bash
-echo YOUR_SPOTIFY_CLIENT_ID > .client_id            # from developer.spotify.com/dashboard
-echo '/path/to/ChatExport_YYYY-MM-DD' > .export_path # Telegram Desktop -> export, JSON
-```
+### 2. Create a free Spotify app
 
-Both files are gitignored. The app's Redirect URI must be exactly
-`http://127.0.0.1:8888/callback`, with "Web API" ticked. No client secret is
-needed. Never commit a client id: whoever runs with it spends *your* search
-quota and inherits your rate-limit bans.
+1. Go to [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard)
+   and create an app (any name/description).
+2. Set its **Redirect URI** to exactly: `http://127.0.0.1:8888/callback`
+3. Tick **Web API**, save, and copy the **Client ID**.
 
-**You almost certainly do not need to download the audio.** Telegram Desktop's
-export dialog has a media size-limit slider (Settings → Advanced → Export
-Telegram data); drag it to the minimum and uncheck nothing else -- you still
-get the full `result.json` (every `performer`/`title`/`caption`/filename/
-`duration_seconds`), just without pulling gigabytes of files. This repo's own
-run measured exactly how much that costs: of 660 successful matches, the
-audio file's own ID3 tag was the *deciding* source for only **4** (0.6%); of
-738 tracks, only **11** (1.5%) lacked a duration in the JSON and needed the
-file to supply one. `ingest.py` already checks each file's presence
-individually and falls back cleanly when it is absent -- nothing to configure.
+No client secret is ever needed — this uses PKCE, where the client ID alone
+is enough.
 
-## Resuming (read this first)
+### 3. Point the tool at both
 
 ```bash
-python3 status.py
+echo YOUR_SPOTIFY_CLIENT_ID > .client_id
+echo '/path/to/ChatExport_YYYY-MM-DD' > .export_path
 ```
 
-Prints the state and the next command. A skill at
-`.claude/skills/tg2spotify/SKILL.md` carries the same operational knowledge
-for Claude Code sessions.
+Both files are gitignored — never commit a client ID. (It's not a secret in
+the security sense, but anyone running with it spends *your* Spotify search
+quota and inherits your rate-limit bans.)
 
-## Two Spotify limits that are not bugs
-
-**Use `/playlists/{id}/items`, never `/playlists/{id}/tracks`.** The `/tracks`
-sub-resource is retired for newly created apps and answers a bare
-`403 {"message": "Forbidden"}` — identical in shape to an app-level ban, with
-no hint that the path itself is the problem. `POST /playlists/{id}/items`
-works with the same token and the same scopes. Two things confirm the scope was
-never at fault: `PUT /playlists/{id}` (editing details, which needs
-`playlist-modify-*`) returns 200, and the playlist object itself links to
-`…/items`. On `/items` the payload field is named `item`, not `track`; reading
-it with the old key silently returns an empty list and makes de-duplication
-believe a full playlist is empty. Both are pinned in
-`tests/test_playlist_items_path.py`.
-
-Genuinely restricted for this app, with no alternative path found:
-`GET|POST /playlists/{id}/tracks`, `GET /users/{id}/playlists`,
-`POST /users/{id}/playlists` (use `POST /me/playlists`), and batch
-`GET /tracks?ids=` (use single `GET /tracks/{id}`). Working: `/me`,
-`/me/playlists`, `/playlists/{id}`, `/playlists/{id}/items`, `/search`,
-`/albums/{id}`.
-
-**Search quota bans last hours.** One 429 asked for a 54,879 second
-(15.2 hour) wait. `api.RateLimited` aborts the run rather than sleeping, and
-retrying a banned endpoint can extend the ban - wait, then re-run.
-
-## Current state — complete
-
-All 738 tracks have been processed and pushed.
-
-| | |
-|---|---|
-| **in the playlist** | **642** |
-| matched automatically | 596 |
-| review (published too) | 64 |
-| not found (manual pile) | 78 |
-| exported to `import_list.txt` | 642 |
-| target playlist | https://open.spotify.com/playlist/0TkJ5AgcefGgvG26eGTRze |
-
-642 unique tracks from 660 matched+review rows: the corpus's 12 duplicate
-performer+title pairs and 4 duplicate filenames collapse onto shared URIs, as
-designed. Verified against the live playlist: 0 missing, 0 extra, 0 orphans.
-
-It took three quota windows across roughly a day and a half — matching runs
-~4 searches per track against a ~600-search-per-window ban, so pace future
-reruns (e.g. after a cleaning-rule change) accordingly. The 78-track manual
-pile is in `reports/not_found.csv`, each row with a ready `open.spotify.com`
-search link — under the 100-track threshold the user set as acceptable.
-
-## Status
-
-| Stage | State |
-|---|---|
-| 1 ingest (5 metadata sources) | done |
-| 2 clean + hypotheses | done, 38 tests green |
-| 3 match against Spotify | done, 14 scoring tests green |
-| 4 review CSV | done (`reports/review.csv`) |
-| 6 push to playlist | done, direct via `POST /playlists/{id}/items` |
-| 5 fingerprint | deferred — only if misses > 100 |
-
-Configure your own app once (see Setup below). PKCE means no client secret is
-used at all.
-
-## What stage 1+2 produced
-
-- 738 tracks ingested, 145 non-music messages excluded, 1 track Telegram
-  refused to export.
-- ID3 tags recovered from 622 files as an independent metadata vote.
-- 2,845 search hypotheses (~3.9 per track).
-- Only **10 tracks** left with no recoverable artist.
-
-Review `reports/cleaned.csv` to audit the cleaning before any Spotify call is made.
-
-## Spotify app
-
-Created at <https://developer.spotify.com/dashboard>, redirect URI
-`http://127.0.0.1:8888/callback`, Web API, Development mode.
-
-Only needed if you replace the app. No client secret is ever used:
+### 4. Run it
 
 ```bash
-export SPOTIFY_CLIENT_ID=...
+python3 tests/run_tests.py        # confirms your setup works: 111 offline tests
+python3 run_ingest.py             # reads the export, fixes names, generates search candidates
+python3 run_match.py 20           # tries the first 20 tracks against Spotify, to sanity-check
+python3 run_match.py              # the rest (safe to re-run any time; picks up where it left off)
 ```
+
+The first `run_match.py` opens Spotify in your browser once, for a single
+consent click. After that it's silent.
+
+### 5. Push to a playlist
+
+```bash
+python3 run_push.py "My playlist name" "<playlist-id-or-url>" --include-review
+```
+
+Pass a playlist you've already created (paste its share link or ID) — the
+tool adds matches to it and never adds the same track twice, even if you run
+this again. `--include-review` also publishes the tracks the matcher wasn't
+fully sure about (see "The ones it's not sure about" below); drop the flag to
+publish only its confident matches.
+
+### 6. Check the results
+
+```bash
+python3 status.py       # one-screen summary: matched / unsure / not found
+python3 run_audit.py    # one CSV of everything worth a manual listen
+```
+
+## Got more than a couple hundred tracks?
+
+Spotify's search quota runs out after a few hundred requests and comes back
+hours later. Instead of running steps 4–5 by hand every time the quota
+clears, let it manage itself:
+
+```bash
+nohup ./autopilot.sh "My playlist name" "<playlist-id>" --include-review &
+```
+
+It matches what it can, pushes it, and — if the quota runs out — sleeps
+exactly as long as Spotify asked, then picks back up automatically. Safe to
+interrupt (Ctrl-C) and re-run any time; keeps going until every track is
+resolved. `nohup` means it survives you closing the terminal.
+
+## The ones it can't find
+
+Some tracks genuinely aren't on Spotify — remixes, live bootlegs, unofficial
+uploads. These land in `reports/not_found.csv`, one row per track with a
+ready `open.spotify.com/search/...` link — click, check, add by hand if it
+turns out to exist after all.
+
+## The ones it's not sure about
+
+`run_audit.py` writes `reports/suspects.csv`: every track that was never
+found, every track published despite the matcher being unsure, and every
+automatic match whose own score was borderline. Worth a quick manual listen
+before you trust the playlist completely — matching by text and duration is
+good, not infallible (a note-perfect cover by a different artist can fool
+it; see the article for a real example).
+
+## No dependencies, on purpose
+
+Pure Python standard library, no `pip install` needed. `difflib` stands in
+for `rapidfuzz`, `urllib` for `requests`, and `src/tg2spotify/id3.py` is a
+small hand-written ID3 reader standing in for `mutagen`.
+
+## More
+
+- **[docs/ARTICLE.en.md](docs/ARTICLE.en.md)** / **[docs/ARTICLE.fa.md](docs/ARTICLE.fa.md)** — the full write-up: every technique, every bug, every alternative considered.
+- **[docs/OPERATIONS.md](docs/OPERATIONS.md)** — Spotify API quirks, resuming, and what one real 738-track run measured.
+- **[docs/superpowers/specs/](docs/superpowers/specs/)** — the original design document.

@@ -101,7 +101,7 @@ def test_orphans_are_reported_but_kept_by_default(tmp="/tmp/tg2s_push_orphan.sql
     """
     if os.path.exists(tmp): os.remove(tmp)
     con = _db(tmp, [(1, "spotify:track:new", "matched")])
-    PID = "0TkJ5AgcefGgvG26eGTRze"
+    PID = "abcXYZ0123456789abcJKL"
     api = FakeApi(existing=["spotify:track:stale", "spotify:track:by_hand"], pid=PID)
     res = push.run(con, api, "Music on 🎧", existing_playlist=PID)
     assert res["orphans"] == 2, res
@@ -113,7 +113,7 @@ def test_orphans_are_reported_but_kept_by_default(tmp="/tmp/tg2s_push_orphan.sql
 def test_prune_removes_orphans_when_asked(tmp="/tmp/tg2s_push_prune.sqlite"):
     if os.path.exists(tmp): os.remove(tmp)
     con = _db(tmp, [(1, "spotify:track:new", "matched")])
-    PID = "0TkJ5AgcefGgvG26eGTRze"
+    PID = "abcXYZ0123456789abcJKL"
     api = FakeApi(existing=["spotify:track:stale"], pid=PID)
     res = push.run(con, api, "Music on 🎧", existing_playlist=PID, prune=True)
     assert res["pruned"] == 1, res

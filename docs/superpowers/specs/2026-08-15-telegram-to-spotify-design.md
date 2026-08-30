@@ -13,7 +13,7 @@ karaoke version, or unrelated song.
 ## Source data
 
 Telegram Desktop export at
-`/home/arash/Downloads/Telegram Desktop/ChatExport_2026-08-12/`
+`~/Downloads/Telegram Desktop/ChatExport_2026-08-12/` (path genericized for publication)
 (machine-readable JSON, 873 KB, complete and valid; `files/` 6.3 GB).
 
 | Fact | Value |
@@ -247,7 +247,7 @@ tested against recorded API fixtures, not the live service.
 | Video files | Skip (report only) |
 | Auto-accept strictness | Balanced (~5s duration tolerance) |
 | Playlist | New, public |
-| Project root | `/home/arash/Downloads/Telegram Desktop/tg2spotify` |
+| Project root | `~/Downloads/Telegram Desktop/tg2spotify` |
 
 ## Risks
 
