@@ -66,6 +66,17 @@ Both files are gitignored. The app's Redirect URI must be exactly
 needed. Never commit a client id: whoever runs with it spends *your* search
 quota and inherits your rate-limit bans.
 
+**You almost certainly do not need to download the audio.** Telegram Desktop's
+export dialog has a media size-limit slider (Settings → Advanced → Export
+Telegram data); drag it to the minimum and uncheck nothing else -- you still
+get the full `result.json` (every `performer`/`title`/`caption`/filename/
+`duration_seconds`), just without pulling gigabytes of files. This repo's own
+run measured exactly how much that costs: of 660 successful matches, the
+audio file's own ID3 tag was the *deciding* source for only **4** (0.6%); of
+738 tracks, only **11** (1.5%) lacked a duration in the JSON and needed the
+file to supply one. `ingest.py` already checks each file's presence
+individually and falls back cleanly when it is absent -- nothing to configure.
+
 ## Resuming (read this first)
 
 ```bash

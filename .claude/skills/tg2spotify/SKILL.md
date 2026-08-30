@@ -81,6 +81,12 @@ about 150 tracks**. The remaining work therefore spans days. Two consequences:
 - User's decisions: publish `review` matches too; accept a few wrong-version
   tracks; a manual pile under 100 is fine; fingerprinting (stage 5) stays
   unbuilt unless misses exceed 100.
+- **The media download is close to skippable.** Only 4/660 successful matches
+  (0.6%) were decided by the ID3 tag vote, and only 11/738 tracks (1.5%)
+  lacked a `duration_seconds` in the JSON and needed the file. `ingest.py`
+  checks each file's presence individually, so a JSON-only export (media
+  size-limit slider dragged to minimum in Telegram Desktop's export dialog)
+  works with no code change.
 
 ## Rules that cost real time when ignored
 

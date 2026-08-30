@@ -1,8 +1,9 @@
 # Moving a Telegram music archive into Spotify
 
 I had eight and a half years of music sitting in a Telegram channel — 738 audio
-files, 6.3 GB, posted between January 2018 and August 2026 — and I wanted it as
-a Spotify playlist. This is what the problem actually looks like, what worked, the one
+files, posted between January 2018 and August 2026 — and I wanted it as a
+Spotify playlist. Telegram's export tool offered to download 6.3 GB of audio
+to get there. It turned out I barely needed any of it. This is what the problem actually looks like, what worked, the one
 misdiagnosis that cost a full day, and what I would tell anyone attempting it.
 
 Everything below is measured on that real archive, not estimated.
@@ -396,3 +397,11 @@ That is the honest limit of the whole approach: it identifies *songs*, not
   I noticed within seconds. The renamed `track` → `item` field returned an empty
   list, which read as "the playlist is empty" and would have silently duplicated
   every track. Silent wrong answers cost more than loud failures.
+- **You almost certainly do not need to download the audio.** Telegram's JSON
+  export already carries `performer`, `title`, the caption, the filename, and
+  (for 727 of 738 tracks here) the duration. The one thing that genuinely
+  requires the file — its own ID3 tags, read as a fifth independent vote — only
+  ended up deciding the *winning* match for **4 of 660** successful matches.
+  Drag Telegram Desktop's export size-limit slider to the minimum and skip
+  gigabytes of downloading; the pipeline already treats a missing file as a
+  normal case, not an error, so nothing else changes.

@@ -38,7 +38,6 @@ def ingest(export_dir: str, db_path: str, report_dir: str) -> Dict[str, int]:
         messages = json.load(fh)["messages"]
 
     con = db.connect(db_path)
-    files_dir = os.path.join(export_dir, "files")
     stats = {"audio": 0, "excluded": 0, "id3_hits": 0, "missing_file": 0, "hypotheses": 0}
 
     for msg in messages:
